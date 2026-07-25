@@ -50,8 +50,7 @@
           "androidMode": "default",
           "androidCollapsedTitle": "DigitalXNews"
         }
-      ],
-      "react-native-keyboard-controller"
+      ]
     ],
     "extra": {
       "eas": {
