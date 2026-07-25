@@ -1,96 +1,94 @@
 # DigitalXNews
 
-AI-powered اسلامی خبریں platform — Groq AI کے 8 specialized agents سے اردو، انگریزی اور عربی میں خبریں generate کرتا ہے۔
+AI-powered Islamic news app — generates multi-language (EN/UR/AR) news articles via 8 Groq AI agents, with Expo mobile client and Express admin server.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — API server چلائیں (port 8080)
-- `pnpm --filter @workspace/islamnashra run dev` — Expo mobile app چلائیں
-- `pnpm run typecheck` — full typecheck
-- `pnpm run build` — typecheck + build
-- `pnpm --filter @workspace/api-spec run codegen` — API hooks اور Zod schemas regenerate کریں
-- `pnpm --filter @workspace/db run push` — DB schema push کریں (dev only)
-- `POST /api/admin/trigger-generation` — فوری خبریں generate کریں
+- `pnpm --filter @workspace/api-server run dev` — run the API/admin server (port 5000)
+- `pnpm --filter @workspace/islamnashra run dev` — run the Expo mobile app
+- `pnpm run typecheck` — full typecheck across all packages
+- `pnpm run build` — typecheck + build all packages
+- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks from OpenAPI spec
+- `pnpm --filter @workspace/db run push` — push DB schema to Supabase (uses SUPABASE_URL + SUPABASE_DB_PASSWORD)
+
+## Required Secrets (Replit Secrets)
+
+| Key | Purpose |
+|-----|---------|
+| `SUPABASE_URL` | Supabase project URL (e.g. https://xxx.supabase.co) |
+| `SUPABASE_PUBLISHABLE_KEY` | Supabase anon key (used by Expo app) |
+| `SUPABASE_SECRET_KEY` | Supabase service role key (used by Express server) |
+| `SUPABASE_DB_PASSWORD` | Supabase postgres password |
+| `GROQ_KEY_1_WORLD_PALESTINE` through `GROQ_KEY_8_REGIONAL` | Per-agent Groq API keys |
+| `GROQ_API_KEY` | Fallback Groq key |
+| `PEXELS_API_KEY` | Image fetching (Pexels free tier) |
+| `SESSION_SECRET` | Express session signing |
+
+## Non-Secret Env Vars
+
+| Key | Value |
+|-----|-------|
+| `SUPABASE_PROJECT_REF` | `qyrkrmxggorpbcbjxihp` |
+| `SUPABASE_DB_REGION` | `ap-southeast-1` |
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- Mobile: Expo (React Native) + Expo Router
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- AI: Groq SDK — 8 specialized agents، ہر agent کی اپنی الگ API key
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
+- **DB**: Supabase PostgreSQL (pooler: `aws-0-ap-southeast-1.pooler.supabase.com:6543`)
+- **API server**: Express 5 (admin routes + news generation cron)
+- **Mobile**: Expo (React Native) — reads directly from Supabase SDK
+- **AI**: Groq (8 agents, llama-3.3-70b-versatile)
+- **Images**: Pexels API
+- **Push**: Expo push notification service
+- **ORM**: Drizzle ORM
+- **Validation**: Zod (zod/v4), drizzle-zod
+- **API codegen**: Orval (from OpenAPI spec)
 
 ## Where things live
 
-- `artifacts/api-server/src/` — Express API server
-  - `routes/posts.ts` — news posts CRUD
-  - `routes/preferences.ts` — device preferences & push tokens
-  - `routes/admin.ts` — content moderation & manual generation trigger
-  - `lib/newsGenerator.ts` — 8 Groq AI agents (per-agent dedicated keys)
-  - `lib/contentModeration.ts` — content safety filter
-  - `lib/pushNotifications.ts` — Expo push notifications
-  - `jobs/scheduler.ts` — cron: news every 8h, auto-delete every 15min
 - `artifacts/islamnashra/` — Expo mobile app
-  - `app/(tabs)/index.tsx` — main news feed
-  - `app/(tabs)/search.tsx` — search screen
-  - `app/(tabs)/notifications.tsx` — notifications
-  - `app/(tabs)/settings.tsx` — settings & language
-  - `app/post/[id].tsx` — post detail
-  - `contexts/LanguageContext.tsx` — Urdu/English/Arabic language switching
-  - `contexts/NotificationsContext.tsx` — push notifications state
-  - `components/NewsCard.tsx` — news card component
-  - `components/SkeletonCard.tsx` — loading skeleton
-- `lib/db/src/schema/` — Drizzle ORM schemas (posts, userPreferences, flaggedPosts)
-- `lib/api-spec/openapi.yaml` — OpenAPI spec (source of truth)
-- `lib/api-client-react/` — generated React Query hooks
-- `AGENTS.md` — مکمل agent/key reference (future AI agents کے لیے)
+- `artifacts/islamnashra/lib/supabase.ts` — Supabase client singleton
+- `artifacts/islamnashra/lib/api.ts` — React Query + Supabase hooks (replaces api-client-react)
+- `artifacts/islamnashra/lib/types.ts` — Post / UserPreference types
+- `artifacts/api-server/` — Express admin + cron server
+- `artifacts/api-server/src/jobs/` — News generation, auto-delete, scheduler
+- `artifacts/api-server/src/lib/newsGenerator.ts` — 8-agent AI pipeline
+- `lib/db/` — Drizzle schema + Supabase connection
+- `supabase/migrations/` — SQL migration files
+- `supabase/functions/` — Supabase Edge Functions (deployable via Supabase CLI)
+- `supabase/DEPLOY.md` — Deployment guide for Supabase edge functions + pg_cron
 
-## Admin API
+## Architecture
 
-- `POST /api/admin/trigger-generation` — manually trigger AI news generation
-- `GET /api/admin/flagged` — list posts pending moderation
-- `POST /api/admin/flagged/:id/approve` — approve a flagged post
-- `POST /api/admin/flagged/:id/reject` — reject a flagged post
+```
+Mobile App (Expo)
+  ↓ reads posts/preferences via @supabase/supabase-js
+Supabase Postgres (ap-southeast-1)
+  ↑ writes news articles via Express + Drizzle ORM
+Express API Server (always on)
+  - node-cron: runs 8 Groq agents every 8 hours
+  - node-cron: auto-deletes expired posts every 15 min
+  - Admin routes: POST /api/admin/trigger-generation
+```
 
-## Required Secrets
+### Future: Supabase Edge Functions
+See `supabase/DEPLOY.md` — edge functions are ready to deploy when you want
+to remove the dependency on the Express server for news generation.
 
-ہر agent کی اپنی الگ Groq key ہے (الگ rate-limit bucket):
+## Architecture decisions
 
-| Secret | Agent | Purpose |
-|--------|-------|---------|
-| `GROQ_KEY_1_WORLD_PALESTINE` | Agent 1 | عالمی خبریں + فلسطین |
-| `GROQ_KEY_2_SOUTH_ASIA` | Agent 2 | جنوبی ایشیا |
-| `GROQ_KEY_3_ECONOMY` | Agent 3 | معیشت |
-| `GROQ_KEY_4_GOVERNMENT` | Agent 4 | حکومت |
-| `GROQ_KEY_5_SECURITY` | Agent 5 | سیکیورٹی |
-| `GROQ_KEY_6_SCHOLARS_MOSQUES` | Agent 6 | علماء + مساجد |
-| `GROQ_KEY_7_MADRASSAS` | Agent 7 | مدارس |
-| `GROQ_KEY_8_REGIONAL` | Agent 8 | افریقہ + ترکی + کمیونٹی |
-| `GROQ_API_KEY` | Fallback | اگر کوئی specific key نہ ہو |
-| `DATABASE_URL` | — | PostgreSQL (runtime managed by Replit) |
-| `SESSION_SECRET` | — | Express session |
-| `GITHUB_TOKEN` | — | GitHub push + secrets sync |
+- Supabase Transaction Pooler (not direct connection) — Replit can't reach port 5432 on db.*.supabase.co directly; the pooler at port 6543 works fine
+- 8 separate Groq API keys — each agent gets its own rate-limit bucket (12k TPM each)
+- 72-hour TTL on posts — enforced at publish time; auto-delete job removes expired rows
+- Mobile app reads directly from Supabase (zero-latency, no Express hop for reads)
 
 ## Gotchas
 
-- ہر agent کی اپنی Groq key سے generation time ~4 min سے ~1 min ہو گیا
-- اگر per-agent key نہ ہو تو auto-fallback GROQ_API_KEY پر، 22s delay apply ہوتی ہے
-- DATABASE_URL runtime-managed by Replit — manually set نہ کریں
-- News generation ہر 8 گھنٹے بعد خودبخود چلتی ہے؛ manual: `POST /api/admin/trigger-generation`
-- islamnashra artifact.toml uses `router = "expo-domain"` — Expo via `$REPLIT_EXPO_DEV_DOMAIN`
-- News auto-expires 72h بعد؛ auto-delete ہر 15 منٹ
+- Supabase DB region is `ap-southeast-1` — always use the pooler URL `aws-0-ap-southeast-1.pooler.supabase.com:6543`
+- EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are injected at build time via the dev script (from SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY secrets)
+- pg_cron for auto-delete must be enabled via Supabase Dashboard → Extensions
+- After any Drizzle schema change, run `pnpm --filter @workspace/db run push`
 
-## Git Push
+## User preferences
 
-```bash
-git add -A && git commit -m "message" && git push origin main
-```
-
-Token `GITHUB_TOKEN` secret میں ہے اور remote URL میں embed ہے۔
-
-## User Preferences
-
-- GitHub repo: https://github.com/ziakhalid5566/IslamNashra.git
-- Full agent/key reference: `AGENTS.md` دیکھیں
+_Populate as you build._

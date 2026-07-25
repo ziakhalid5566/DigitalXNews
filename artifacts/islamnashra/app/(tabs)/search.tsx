@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
-import { useListPosts } from '@workspace/api-client-react';
+import { useListPosts } from '@/lib/api';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getLocalizedContent } from '@/contexts/LanguageContext';
@@ -21,7 +21,7 @@ import { timeAgo, formatCount } from '@/components/NewsCard';
 import { Link } from 'expo-router';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
-import type { Post } from '@workspace/api-client-react/src/generated/api.schemas';
+import type { Post } from '@/lib/types';
 
 // ─── Categories with emoji ────────────────────────────────────────────────────
 const FILTER_CATS = [

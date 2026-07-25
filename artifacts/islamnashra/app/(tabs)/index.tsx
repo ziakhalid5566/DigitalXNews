@@ -13,10 +13,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
-import { useListPosts } from '@workspace/api-client-react';
+import { useListPosts } from '@/lib/api';
 import { NewsCard } from '@/components/NewsCard';
 import { SkeletonCard } from '@/components/SkeletonCard';
-import type { Post } from '@workspace/api-client-react/src/generated/api.schemas';
+import type { Post } from '@/lib/types';
 import { useLanguage, type Language } from '@/contexts/LanguageContext';
 
 // ─── Hijri date helper ────────────────────────────────────────────────────────

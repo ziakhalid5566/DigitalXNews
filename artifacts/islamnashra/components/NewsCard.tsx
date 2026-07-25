@@ -7,8 +7,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Link } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Post } from '@workspace/api-client-react/src/generated/api.schemas';
-import { useLikePost } from '@workspace/api-client-react';
+import type { Post } from '@/lib/types';
+import { useLikePost } from '@/lib/api';
 import { type Language, getLocalizedContent } from '@/contexts/LanguageContext';
 
 const LIKED_KEY = 'liked_post_ids';

@@ -14,7 +14,7 @@ import {
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
-import { setBaseUrl } from '@workspace/api-client-react';
+
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { NotificationsProvider } from '@/contexts/NotificationsContext';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
@@ -34,7 +34,7 @@ Notifications.setNotificationHandler({
 // Prevent the native splash screen from auto-hiding before fonts load.
 SplashScreen.preventAutoHideAsync();
 
-setBaseUrl(`https://${process.env.EXPO_PUBLIC_DOMAIN}`);
+// Base URL removed — app now reads directly from Supabase SDK
 
 const queryClient = new QueryClient();
 

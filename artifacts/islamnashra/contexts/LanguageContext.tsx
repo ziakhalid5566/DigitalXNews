@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Post } from '@workspace/api-client-react/src/generated/api.schemas';
+import type { Post } from '@/lib/types';
 
 export type Language = 'ur' | 'ar' | 'en';
 

@@ -1,0 +1,30 @@
+# Supabase project configuration for DigitalXNews
+# Project ref: qyrkrmxggorpbcbjxihp
+# Project URL: https://qyrkrmxggorpbcbjxihp.supabase.co
+
+[api]
+# REST API settings
+port = 54321
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 15
+
+[studio]
+port = 54323
+
+[inbucket]
+port = 54324
+
+[storage]
+file_size_limit = "50MiB"
+
+[auth]
+site_url = "http://localhost:3000"
+
+[functions.auto-delete]
+verify_jwt = false
+
+[functions.news-generation]
+verify_jwt = false

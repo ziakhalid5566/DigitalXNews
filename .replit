@@ -18,3 +18,9 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.shared]
+SUPABASE_PROJECT_REF = "qyrkrmxggorpbcbjxihp"
+SUPABASE_DB_REGION = "ap-southeast-1"

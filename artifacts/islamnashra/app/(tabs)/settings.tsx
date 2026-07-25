@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useGetPreferences, useUpsertPreferences } from '@workspace/api-client-react';
+import { useGetPreferences, useUpsertPreferences } from '@/lib/api';
 import { useLanguage, LANGUAGE_OPTIONS } from '@/contexts/LanguageContext';
 import { registerForPushNotificationsAsync } from '@/hooks/usePushNotifications';
 

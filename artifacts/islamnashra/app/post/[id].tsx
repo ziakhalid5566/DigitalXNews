@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Link } from 'expo-router';
 import { useColors } from '@/hooks/useColors';
-import { useGetPost, useLikePost, useViewPost, useListPosts } from '@workspace/api-client-react';
+import { useGetPost, useLikePost, useViewPost, useListPosts } from '@/lib/api';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Image } from 'expo-image';
@@ -19,7 +19,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { timeAgo, expiresIn, formatCount } from '@/components/NewsCard';
 import { useLanguage, getLocalizedContent } from '@/contexts/LanguageContext';
 import * as Haptics from 'expo-haptics';
-import type { Post } from '@workspace/api-client-react/src/generated/api.schemas';
+import type { Post } from '@/lib/types';
 
 const LIKED_KEY = 'liked_post_ids';
 const VIEWED_KEY = 'viewed_post_ids';
