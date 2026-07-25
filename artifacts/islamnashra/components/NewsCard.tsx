@@ -68,9 +68,16 @@ export function NewsCard({ post, language }: NewsCardProps) {
   const { title, body } = getLocalizedContent(post, language);
   const [isLiked, setIsLiked] = useState(false);
   const [localLikes, setLocalLikes] = useState(post.likesCount ?? 0);
+  // Track per-URL load failure so a different URL can still load.
+  // Reset to false whenever the image URL changes (new post or updated URL).
   const [imageError, setImageError] = useState(false);
   const likeMutation = useLikePost();
   const isRTL = language === 'ur' || language === 'ar';
+
+  // Reset error state whenever the image URL changes so a new valid URL is tried.
+  useEffect(() => {
+    setImageError(false);
+  }, [post.imageUrl]);
 
   const catMeta = CATEGORY_META[post.category] ?? { emoji: '📰', color: '#1565C0', darkColor: '#1E88E5' };
 
@@ -101,6 +108,14 @@ export function NewsCard({ post, language }: NewsCardProps) {
     }
   }, [isLiked, post.id, likeMutation]);
 
+  // Whether we should attempt to show the Pexels image.
+  // imageUrl must be a non-empty HTTPS URL and must not have previously errored.
+  const showImage =
+    post.hasImage &&
+    !!post.imageUrl &&
+    post.imageUrl.startsWith('https://') &&
+    !imageError;
+
   return (
     <Link href={`/post/${post.id}`} asChild>
       <Pressable onPressIn={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}>
@@ -117,14 +132,22 @@ export function NewsCard({ post, language }: NewsCardProps) {
             ]}
           >
             {/* ── Image section ── */}
-            {post.hasImage && post.imageUrl && !imageError ? (
+            {showImage ? (
               <View style={styles.imageContainer}>
                 <Image
-                  source={{ uri: post.imageUrl }}
+                  source={{ uri: post.imageUrl! }}
                   style={styles.image}
                   contentFit="cover"
                   transition={200}
-                  onError={() => setImageError(true)}
+                  // recyclingKey prevents stale image state when the list
+                  // reuses card components for different posts.
+                  recyclingKey={post.id}
+                  // Use memory+disk cache for best offline resilience.
+                  cachePolicy="memory-disk"
+                  onError={(e) => {
+                    console.warn('[NewsCard] Image failed to load:', post.imageUrl, e);
+                    setImageError(true);
+                  }}
                 />
                 <LinearGradient
                   colors={['transparent', 'transparent', 'rgba(0,0,0,0.72)']}

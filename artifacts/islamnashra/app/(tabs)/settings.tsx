@@ -10,7 +10,7 @@ import { useColors } from '@/hooks/useColors';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useGetPreferences, useUpsertPreferences } from '@/lib/api';
 import { useLanguage, LANGUAGE_OPTIONS } from '@/contexts/LanguageContext';
-import { registerForPushNotificationsAsync } from '@/hooks/usePushNotifications';
+import { registerForPushNotificationsAsync, type PushRegistrationResult } from '@/hooks/usePushNotifications';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const CATEGORIES = [
@@ -158,16 +158,24 @@ export default function SettingsScreen() {
     if (enabled && !token) {
       setRegistering(true);
       try {
-        token = await registerForPushNotificationsAsync();
-        if (token) {
+        const result: PushRegistrationResult = await registerForPushNotificationsAsync();
+        if (result.token) {
+          token = result.token;
           await AsyncStorage.setItem(PUSH_TOKEN_KEY, token);
           setPushToken(token);
         } else {
-          Alert.alert('Notifications unavailable', 'Could not register. Use a physical device with notification permissions granted.');
+          // Show the actual underlying error so the user knows what to fix.
+          const message = result.error ?? 'Unknown error during registration.';
+          Alert.alert('Notifications unavailable', message);
           setRegistering(false);
           return;
         }
-      } catch { setRegistering(false); return; }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        Alert.alert('Notifications unavailable', message);
+        setRegistering(false);
+        return;
+      }
       setRegistering(false);
     }
 

@@ -119,6 +119,54 @@ const VALID_CATEGORIES = new Set([
   "Southeast Asia", "Turkey", "Community",
 ]);
 
+// ─── Language validation ───────────────────────────────────────────────────────
+
+/**
+ * Unicode ranges for Urdu/Arabic script characters.
+ * Urdu is written in Nastaliq (a variant of Arabic script), so valid
+ * characters include Arabic block + Arabic Extended + Arabic Presentation Forms.
+ */
+const ARABIC_SCRIPT_REGEX = /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
+/**
+ * Detect non-Urdu/Arabic/Latin characters in supposedly Urdu text.
+ * Returns true if the text contains Devanagari (Hindi), CJK (Chinese/Japanese/Korean),
+ * Cyrillic, Greek, or any other script that should not appear in Urdu content.
+ */
+function containsForeignScript(text: string): boolean {
+  // Devanagari (Hindi): U+0900–U+097F
+  if (/[\u0900-\u097F]/.test(text)) return true;
+  // CJK Unified Ideographs (Chinese/Japanese): U+4E00–U+9FFF + extensions
+  if (/[\u4E00-\u9FFF\u3400-\u4DBF\u20000-\u2A6DF]/.test(text)) return true;
+  // Cyrillic: U+0400–U+04FF
+  if (/[\u0400-\u04FF]/.test(text)) return true;
+  // Greek: U+0370–U+03FF
+  if (/[\u0370-\u03FF]/.test(text)) return true;
+  // Thai: U+0E00–U+0E7F
+  if (/[\u0E00-\u0E7F]/.test(text)) return true;
+  // Hebrew: U+0590–U+05FF
+  if (/[\u0590-\u05FF]/.test(text)) return true;
+  // Hangul (Korean): U+AC00–U+D7AF
+  if (/[\uAC00-\uD7AF]/.test(text)) return true;
+  // Katakana/Hiragana (Japanese): U+3040–U+30FF
+  if (/[\u3040-\u30FF]/.test(text)) return true;
+  return false;
+}
+
+/**
+ * Validate that Arabic text doesn't contain foreign scripts.
+ * Arabic content may legitimately contain some Latin (proper nouns), but
+ * should not contain Devanagari, CJK, etc.
+ */
+function isUrduArabicClean(text: string): boolean {
+  if (!text) return false;
+  if (containsForeignScript(text)) return false;
+  // Ensure the text actually contains Urdu/Arabic script characters
+  // (not just Latin/numbers, which would indicate wrong language)
+  if (!ARABIC_SCRIPT_REGEX.test(text)) return false;
+  return true;
+}
+
 // ─── Groq call ────────────────────────────────────────────────────────────────
 
 interface GeneratedArticle {
@@ -149,7 +197,13 @@ Rules:
 - significance_score: 1-10 (10 = breaking/major international event)
 - is_breaking: true only for genuinely major breaking events (score >= 9)
 - source_note must always be "AI-Generated Summary"
-- Include all 3 languages for every article`;
+- Include all 3 languages for every article
+
+CRITICAL LANGUAGE RULES — you MUST follow these exactly:
+- title_ur and body_ur: Write EXCLUSIVELY in Urdu using the Nastaliq/Perso-Arabic script (Unicode block U+0600–U+06FF). Do NOT use Devanagari (Hindi script), Chinese/CJK characters, Latin letters, Cyrillic, Greek, or any other script. Every word must be authentic Urdu vocabulary in Arabic script. If you are unsure of an Urdu word, use a common Urdu paraphrase — never substitute Hindi words written in Devanagari.
+- title_ar and body_ar: Write EXCLUSIVELY in Modern Standard Arabic using Arabic script. Do NOT mix in any other scripts.
+- title_en and body_en: Write in English only.
+- Mixed-script output will be rejected. Produce clean, pure Urdu and Arabic text.`;
 
   const response = await groq.chat.completions.create({
     model: "llama-3.3-70b-versatile",
@@ -167,11 +221,34 @@ Rules:
   }
 
   const articles: GeneratedArticle[] = JSON.parse(match[0]);
-  return articles.filter(
-    (a) =>
-      a.title_en && a.body_en && a.title_ur && a.body_ur && a.title_ar && a.body_ar &&
-      VALID_CATEGORIES.has(a.category),
-  );
+
+  const validated = articles.filter((a) => {
+    if (!a.title_en || !a.body_en || !a.title_ur || !a.body_ur || !a.title_ar || !a.body_ar) {
+      console.warn(`[${agent.name}] Skipping article missing required fields: "${a.title_en}"`);
+      return false;
+    }
+    if (!VALID_CATEGORIES.has(a.category)) {
+      console.warn(`[${agent.name}] Skipping article with invalid category: "${a.category}"`);
+      return false;
+    }
+    // Validate Urdu text is clean (no foreign scripts mixed in)
+    if (!isUrduArabicClean(a.title_ur) || !isUrduArabicClean(a.body_ur)) {
+      console.warn(`[${agent.name}] Skipping article with mixed/foreign-script Urdu: "${a.title_en}"`);
+      return false;
+    }
+    // Validate Arabic text is clean
+    if (!isUrduArabicClean(a.title_ar) || !isUrduArabicClean(a.body_ar)) {
+      console.warn(`[${agent.name}] Skipping article with mixed/foreign-script Arabic: "${a.title_en}"`);
+      return false;
+    }
+    return true;
+  });
+
+  if (validated.length < articles.length) {
+    console.log(`[${agent.name}] Language validation: ${articles.length - validated.length} article(s) dropped for mixed-script content`);
+  }
+
+  return validated;
 }
 
 // ─── Image fetch ──────────────────────────────────────────────────────────────
@@ -259,6 +336,9 @@ function buildQueryCandidates(titleEn: string, bodyEn: string, category: string)
 /**
  * Fetch an image from Pexels for an article.
  *
+ * Uses src.medium (1200px wide) instead of src.large (1880px) for better
+ * mobile performance and faster loading on Android devices.
+ *
  * Strategy:
  *  • Tries queries from most-specific → broadest.
  *  • For each query, fetches 15 results and picks the first URL that is NOT
@@ -295,11 +375,14 @@ async function fetchImage(
       }
 
       const json = await res.json();
-      const photos: Array<{ src: { large: string } }> = json.photos ?? [];
+      // Use src.medium (1200px wide) — better for mobile than src.large (1880px).
+      // Falls back to src.large if medium is missing for any photo.
+      const photos: Array<{ src: { medium: string; large: string } }> = json.photos ?? [];
 
       // Pick first non-duplicate photo
       for (const photo of photos) {
-        const url = photo.src.large;
+        const url = photo.src.medium || photo.src.large;
+        if (!url) continue;
         if (!usedImageUrls.has(url)) {
           usedImageUrls.add(url);
           console.log(`[Image] Found image via query "${rawQuery}": ${url.slice(0, 80)}`);
