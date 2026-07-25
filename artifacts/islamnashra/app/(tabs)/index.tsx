@@ -89,35 +89,34 @@ export default function FeedScreen() {
       colors={[colors.headerGradientStart, colors.headerGradientEnd]}
       style={[styles.header, { paddingTop: insets.top + 4 }]}
     >
-      {/* بسم اللہ */}
+      {/* بسم اللہ — center */}
       <Text style={styles.bismillah}>بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ</Text>
 
-      {/* Brand row */}
+      {/* Brand row: icon+name LEFT — dates RIGHT */}
       <View style={styles.brandRow}>
-        {/* Logo */}
-        <View style={styles.logoWrap}>
-          <Image
-            source={require('@/assets/images/icon.png')}
-            style={styles.logoImg}
-            resizeMode="contain"
-          />
+        {/* Left: Logo + Name */}
+        <View style={styles.logoNameWrap}>
+          <View style={styles.logoWrap}>
+            <Image
+              source={require('@/assets/images/icon.png')}
+              style={styles.logoImg}
+              resizeMode="contain"
+            />
+          </View>
+          <Text style={[styles.titleMain, { color: colors.primaryForeground }]}>
+            DigitalXNews
+          </Text>
         </View>
 
-        {/* Title + date */}
-        <View style={styles.titleStack}>
-          <Text style={[styles.titleMain, { color: colors.primaryForeground }]}>
-            اسلام نشرہ
+        {/* Right: day name + dates */}
+        <View style={styles.dateStack}>
+          <Text style={[styles.dayName, { color: '#FFFFFF' }]}>
+            {dateInfo.dayName}
           </Text>
-          {/* Islamic date */}
           {dateInfo.hijri ? (
-            <View style={styles.dateRow}>
-              <Text style={[styles.hijriDate, { color: 'rgba(255,255,255,0.90)' }]}>
-                {dateInfo.hijri}
-              </Text>
-              <Text style={[styles.dayName, { color: 'rgba(255,255,255,0.60)' }]}>
-                {' • '}{dateInfo.dayName}
-              </Text>
-            </View>
+            <Text style={[styles.hijriDate, { color: 'rgba(255,255,255,0.75)' }]}>
+              {dateInfo.hijri}
+            </Text>
           ) : null}
         </View>
       </View>
@@ -254,46 +253,48 @@ const styles = StyleSheet.create({
   bismillah: {
     textAlign: 'center',
     fontSize: 13,
-    color: 'rgba(255,255,255,0.75)',
+    color: 'rgba(255,255,255,0.72)',
     fontFamily: 'Inter_400Regular',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
     marginBottom: 2,
   },
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'space-between',
+  },
+  logoNameWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   logoWrap: {
-    width: 46,
-    height: 46,
-    borderRadius: 13,
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     overflow: 'hidden',
   },
   logoImg: {
-    width: 46,
-    height: 46,
-    borderRadius: 13,
+    width: 42,
+    height: 42,
   },
-  titleStack: { flex: 1 },
   titleMain: {
-    fontSize: 22,
+    fontSize: 20,
     fontFamily: 'Inter_700Bold',
     letterSpacing: 0.3,
     color: '#FFFFFF',
   },
-  dateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
-    flexWrap: 'wrap',
-  },
-  hijriDate: {
-    fontSize: 11,
-    fontFamily: 'Inter_500Medium',
+  /* Right date block */
+  dateStack: {
+    alignItems: 'flex-end',
+    gap: 1,
   },
   dayName: {
-    fontSize: 11,
+    fontSize: 14,
+    fontFamily: 'Inter_600SemiBold',
+  },
+  hijriDate: {
+    fontSize: 10,
     fontFamily: 'Inter_400Regular',
   },
 

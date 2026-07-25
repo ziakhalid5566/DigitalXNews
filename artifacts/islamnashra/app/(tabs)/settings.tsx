@@ -211,8 +211,8 @@ export default function SettingsScreen() {
             resizeMode="contain"
           />
         </View>
-        <Text style={[sStyles.brandName, { color: colors.primaryForeground }]}>اسلام نشرہ</Text>
-        <Text style={[sStyles.brandSub, { color: colors.accent }]}>IslamNashra</Text>
+        <Text style={[sStyles.brandName, { color: colors.primaryForeground }]}>{s.brand}</Text>
+        <Text style={[sStyles.brandSub, { color: colors.accent }]}>DigitalXNews</Text>
         <View style={[sStyles.versionBadge, { backgroundColor: 'rgba(255,255,255,0.12)' }]}>
           <Text style={[sStyles.versionTxt, { color: 'rgba(255,255,255,0.7)' }]}>{s.version} 2.0</Text>
         </View>

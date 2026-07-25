@@ -11,7 +11,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Image, StyleSheet, Text, View } from 'react-native';
 
-const FULL_TEXT = 'اسلام نشرہ';
+const FULL_TEXT = 'DigitalXNews';
 const TYPE_DELAY = 110;   // ms per character typed
 const ERASE_DELAY = 65;   // ms per character erased
 const PAUSE_AFTER_TYPE = 700;
@@ -92,9 +92,11 @@ export function SplashAnimation({ onDone }: Props) {
         resizeMode="contain"
       />
 
-      {/* Typewriter title */}
+      {/* Typewriter title — Digital(white) X(blue) News(white) */}
       <View style={styles.titleRow}>
-        <Text style={styles.titleWhite}>{displayed}</Text>
+        <Text style={styles.titleWhite}>{displayed.slice(0, 7)}</Text>
+        {displayed.length > 7 && <Text style={styles.titleBlue}>{displayed[7]}</Text>}
+        <Text style={styles.titleWhite}>{displayed.slice(8)}</Text>
         <Animated.Text style={[styles.cursor, { opacity: cursorAnim }]}>|</Animated.Text>
       </View>
     </Animated.View>
@@ -133,7 +135,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_700Bold',
     color: '#FFFFFF',
     letterSpacing: 0.4,
-    writingDirection: 'rtl',
+  },
+  titleBlue: {
+    fontSize: 32,
+    fontFamily: 'Inter_700Bold',
+    color: '#42A5F5',
+    letterSpacing: 0.4,
   },
   cursor: {
     fontSize: 32,
