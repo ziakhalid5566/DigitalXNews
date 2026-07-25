@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   StyleSheet, View, Text, ScrollView, Switch,
-  Pressable, ActivityIndicator, Alert,
+  Pressable, ActivityIndicator, Alert, Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -205,10 +205,14 @@ export default function SettingsScreen() {
         style={sStyles.header}
       >
         <View style={sStyles.logoCircle}>
-          <Text style={sStyles.logoEmoji}>☪️</Text>
+          <Image
+            source={require('@/assets/images/icon.png')}
+            style={sStyles.logoImg}
+            resizeMode="contain"
+          />
         </View>
-        <Text style={[sStyles.brandName, { color: colors.primaryForeground }]}>{s.brand}</Text>
-        <Text style={[sStyles.brandSub, { color: colors.accent }]}>DigitalXNews</Text>
+        <Text style={[sStyles.brandName, { color: colors.primaryForeground }]}>اسلام نشرہ</Text>
+        <Text style={[sStyles.brandSub, { color: colors.accent }]}>IslamNashra</Text>
         <View style={[sStyles.versionBadge, { backgroundColor: 'rgba(255,255,255,0.12)' }]}>
           <Text style={[sStyles.versionTxt, { color: 'rgba(255,255,255,0.7)' }]}>{s.version} 2.0</Text>
         </View>
@@ -337,15 +341,13 @@ const sStyles = StyleSheet.create({
     gap: 6,
   },
   logoCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    overflow: 'hidden',
     marginBottom: 8,
   },
-  logoEmoji: { fontSize: 36 },
+  logoImg: { width: 80, height: 80, borderRadius: 20 },
   brandName: { fontSize: 26, fontFamily: 'Inter_700Bold' },
   brandSub: { fontSize: 14, fontFamily: 'Inter_500Medium', letterSpacing: 1 },
   versionBadge: {

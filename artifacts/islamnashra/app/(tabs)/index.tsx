@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -17,8 +17,23 @@ import { useListPosts } from '@workspace/api-client-react';
 import { NewsCard } from '@/components/NewsCard';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import type { Post } from '@workspace/api-client-react/src/generated/api.schemas';
-import { useLanguage, LANGUAGE_OPTIONS, type Language } from '@/contexts/LanguageContext';
-import { Link } from 'expo-router';
+import { useLanguage, type Language } from '@/contexts/LanguageContext';
+
+// ─── Hijri date helper ────────────────────────────────────────────────────────
+function getIslamicDate(): { hijri: string; dayName: string } {
+  const now = new Date();
+  try {
+    const hijri = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).format(now);
+    const dayName = new Intl.DateTimeFormat('en', { weekday: 'long' }).format(now);
+    return { hijri, dayName };
+  } catch {
+    return { hijri: '', dayName: '' };
+  }
+}
 
 // ─── Category config ──────────────────────────────────────────────────────────
 const CATEGORIES = [
@@ -38,19 +53,20 @@ const CATEGORIES = [
   { key: 'Community',     label: 'کمیونٹی',      emoji: '👥' },
 ];
 
-const LANG_META: Record<Language, { flag: string; short: string }> = {
-  en: { flag: '🇬🇧', short: 'EN' },
-  ur: { flag: '🇵🇰', short: 'اردو' },
-  ar: { flag: '🇸🇦', short: 'عربي' },
-};
-
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function FeedScreen() {
   const insets = useSafeAreaInsets();
   const colors = useColors();
-  const { language, setLanguage } = useLanguage();
+  const { language } = useLanguage();
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [dateInfo, setDateInfo] = useState(() => getIslamicDate());
+
+  useEffect(() => {
+    // refresh date at midnight
+    const timer = setInterval(() => setDateInfo(getIslamicDate()), 60 * 1000);
+    return () => clearInterval(timer);
+  }, []);
   const { data, isLoading, refetch, isError } = useListPosts(
     {
       category: selectedCategory === 'All' ? undefined : selectedCategory,
@@ -71,8 +87,11 @@ export default function FeedScreen() {
   const renderHeader = () => (
     <LinearGradient
       colors={[colors.headerGradientStart, colors.headerGradientEnd]}
-      style={[styles.header, { paddingTop: insets.top + 6 }]}
+      style={[styles.header, { paddingTop: insets.top + 4 }]}
     >
+      {/* بسم اللہ */}
+      <Text style={styles.bismillah}>بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ</Text>
+
       {/* Brand row */}
       <View style={styles.brandRow}>
         {/* Logo */}
@@ -84,45 +103,23 @@ export default function FeedScreen() {
           />
         </View>
 
-        {/* Title */}
+        {/* Title + date */}
         <View style={styles.titleStack}>
           <Text style={[styles.titleMain, { color: colors.primaryForeground }]}>
-            DigitalXNews
+            اسلام نشرہ
           </Text>
-          <Text style={[styles.titleSub, { color: 'rgba(255,255,255,0.55)' }]}>
-            اسلامی خبریں • Global Islamic News
-          </Text>
-        </View>
-
-      </View>
-
-      {/* Language switcher */}
-      <View style={[styles.langPill, { backgroundColor: 'rgba(0,0,0,0.25)' }]}>
-        {LANGUAGE_OPTIONS.map((opt) => {
-          const active = language === opt.code;
-          const meta = LANG_META[opt.code];
-          return (
-            <Pressable
-              key={opt.code}
-              onPress={() => setLanguage(opt.code)}
-              style={[
-                styles.langSeg,
-                active && { backgroundColor: 'rgba(255,255,255,0.2)' },
-              ]}
-            >
-              <Text style={styles.langFlag}>{meta.flag}</Text>
-              <Text
-                style={[
-                  styles.langLabel,
-                  { color: active ? '#FFFFFF' : 'rgba(255,255,255,0.6)' },
-                  active && { fontFamily: 'Inter_700Bold' },
-                ]}
-              >
-                {meta.short}
+          {/* Islamic date */}
+          {dateInfo.hijri ? (
+            <View style={styles.dateRow}>
+              <Text style={[styles.hijriDate, { color: 'rgba(255,255,255,0.90)' }]}>
+                {dateInfo.hijri}
               </Text>
-            </Pressable>
-          );
-        })}
+              <Text style={[styles.dayName, { color: 'rgba(255,255,255,0.60)' }]}>
+                {' • '}{dateInfo.dayName}
+              </Text>
+            </View>
+          ) : null}
+        </View>
       </View>
 
       {/* Breaking news ticker */}
@@ -252,23 +249,30 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 16,
     paddingBottom: 12,
-    gap: 10,
+    gap: 8,
+  },
+  bismillah: {
+    textAlign: 'center',
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.75)',
+    fontFamily: 'Inter_400Regular',
+    letterSpacing: 0.5,
+    marginBottom: 2,
   },
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingTop: 4,
   },
   logoWrap: {
-    width: 44,
-    height: 44,
+    width: 46,
+    height: 46,
     borderRadius: 13,
     overflow: 'hidden',
   },
   logoImg: {
-    width: 44,
-    height: 44,
+    width: 46,
+    height: 46,
     borderRadius: 13,
   },
   titleStack: { flex: 1 },
@@ -276,31 +280,22 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontFamily: 'Inter_700Bold',
     letterSpacing: 0.3,
+    color: '#FFFFFF',
   },
-  titleSub: {
-    fontSize: 11,
-    fontFamily: 'Inter_400Regular',
-    marginTop: 1,
-  },
-
-  /* Language pill */
-  langPill: {
-    flexDirection: 'row',
-    alignSelf: 'flex-start',
-    borderRadius: 100,
-    padding: 3,
-    gap: 2,
-  },
-  langSeg: {
+  dateRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 100,
+    marginTop: 2,
+    flexWrap: 'wrap',
   },
-  langFlag: { fontSize: 14 },
-  langLabel: { fontSize: 13, fontFamily: 'Inter_500Medium' },
+  hijriDate: {
+    fontSize: 11,
+    fontFamily: 'Inter_500Medium',
+  },
+  dayName: {
+    fontSize: 11,
+    fontFamily: 'Inter_400Regular',
+  },
 
   /* Breaking ticker */
   ticker: {
