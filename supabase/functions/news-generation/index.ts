@@ -2,13 +2,17 @@
  * Supabase Edge Function: news-generation
  *
  * Ports the 8-agent AI news generation pipeline from the Express server to Deno.
- * Each agent uses its own Groq API key to maximize rate-limit headroom.
+ * 4 shared Groq keys (2 agents per key), with a 25 s stagger inside each pair
+ * to stay within Groq's free-tier 12,000 TPM rate limit.
  *
  * Required secrets (set via `supabase secrets set`):
- *   GROQ_KEY_1_WORLD_PALESTINE, GROQ_KEY_2_SOUTH_ASIA, ..., GROQ_KEY_8_REGIONAL
- *   GROQ_API_KEY           (fallback key)
- *   PEXELS_API_KEY         (image fetching)
- *   SUPABASE_URL           (auto-injected by Supabase)
+ *   GROQ_KEY_A   → agents: world_palestine + south_asia
+ *   GROQ_KEY_B   → agents: economy        + government
+ *   GROQ_KEY_C   → agents: security       + scholars_mosques
+ *   GROQ_KEY_D   → agents: madrassas      + regional
+ *   GROQ_API_KEY              (fallback key)
+ *   PEXELS_API_KEY            (image fetching)
+ *   SUPABASE_URL              (auto-injected by Supabase)
  *   SUPABASE_SERVICE_ROLE_KEY (auto-injected by Supabase)
  */
 
@@ -28,59 +32,71 @@ const IMAGE_SCORE_THRESHOLD = 6;
 
 // ─── Agent definitions ────────────────────────────────────────────────────────
 
+// delayBeforeMs:
+//   0     → first agent in a key-pair (no stagger needed)
+//   25000 → second agent in a key-pair (25 s stagger to let shared bucket refill)
+//   2000  → first agent of a new pair (different key; short DB-write buffer only)
 const AGENTS = [
   {
     name: "world_palestine",
-    envKey: "GROQ_KEY_1_WORLD_PALESTINE",
+    envKey: "GROQ_KEY_A",       // pair 1/2 — first
+    delayBeforeMs: 0,
     categories: ["World", "Palestine"],
     prompt: `You are a senior Islamic news analyst covering world affairs and the Palestinian situation.
 Generate exactly 2 news articles about significant world events or Palestine in JSON format.`,
   },
   {
     name: "south_asia",
-    envKey: "GROQ_KEY_2_SOUTH_ASIA",
+    envKey: "GROQ_KEY_A",       // pair 2/2 — shares key with world_palestine
+    delayBeforeMs: 25000,
     categories: ["South Asia"],
     prompt: `You are a senior Islamic news analyst covering South Asia (Pakistan, Bangladesh, India, Afghanistan, etc.).
 Generate exactly 2 news articles about significant South Asian events in JSON format.`,
   },
   {
     name: "economy",
-    envKey: "GROQ_KEY_3_ECONOMY",
+    envKey: "GROQ_KEY_B",       // pair 1/2 — first
+    delayBeforeMs: 2000,
     categories: ["Economy"],
     prompt: `You are a senior Islamic news analyst covering Islamic economy and finance.
 Generate exactly 2 news articles about significant economic events affecting Muslim countries in JSON format.`,
   },
   {
     name: "government",
-    envKey: "GROQ_KEY_4_GOVERNMENT",
+    envKey: "GROQ_KEY_B",       // pair 2/2 — shares key with economy
+    delayBeforeMs: 25000,
     categories: ["Government"],
     prompt: `You are a senior Islamic news analyst covering government and politics in Muslim-majority countries.
 Generate exactly 2 news articles about significant governance events in JSON format.`,
   },
   {
     name: "security",
-    envKey: "GROQ_KEY_5_SECURITY",
+    envKey: "GROQ_KEY_C",       // pair 1/2 — first
+    delayBeforeMs: 2000,
     categories: ["Security"],
     prompt: `You are a senior Islamic news analyst covering security and conflict in Muslim regions.
 Generate exactly 2 news articles about significant security events in JSON format.`,
   },
   {
     name: "scholars_mosques",
-    envKey: "GROQ_KEY_6_SCHOLARS_MOSQUES",
+    envKey: "GROQ_KEY_C",       // pair 2/2 — shares key with security
+    delayBeforeMs: 25000,
     categories: ["Scholars", "Mosques"],
     prompt: `You are a senior Islamic news analyst covering Islamic scholars and mosque affairs.
 Generate exactly 2 news articles — one about Islamic scholars/fatwas and one about mosques in JSON format.`,
   },
   {
     name: "madrassas",
-    envKey: "GROQ_KEY_7_MADRASSAS",
+    envKey: "GROQ_KEY_D",       // pair 1/2 — first
+    delayBeforeMs: 2000,
     categories: ["Madrassas"],
     prompt: `You are a senior Islamic news analyst covering Islamic education and madrassas.
 Generate exactly 2 news articles about Islamic education events in JSON format.`,
   },
   {
     name: "regional",
-    envKey: "GROQ_KEY_8_REGIONAL",
+    envKey: "GROQ_KEY_D",       // pair 2/2 — shares key with madrassas
+    delayBeforeMs: 25000,
     categories: ["Africa", "Southeast Asia", "Turkey", "Community"],
     prompt: `You are a senior Islamic news analyst covering Africa, Southeast Asia, Turkey, and Muslim communities worldwide.
 Generate exactly 2 news articles — one about Africa/Turkey/Southeast Asia and one about Muslim communities in JSON format.`,
@@ -236,9 +252,11 @@ Deno.serve(async (req) => {
   let flagged = 0;
   let imagedCount = 0;
 
-  for (let i = 0; i < AGENTS.length; i++) {
-    const agent = AGENTS[i];
-    if (i > 0) await new Promise((r) => setTimeout(r, 2000));
+  for (const agent of AGENTS) {
+    if (agent.delayBeforeMs > 0) {
+      console.log(`[${agent.name}] Waiting ${agent.delayBeforeMs}ms before start (${agent.delayBeforeMs >= 25000 ? "shared-key stagger" : "inter-pair buffer"})`);
+      await new Promise((r) => setTimeout(r, agent.delayBeforeMs));
+    }
 
     try {
       const articles = await generateForAgent(agent);

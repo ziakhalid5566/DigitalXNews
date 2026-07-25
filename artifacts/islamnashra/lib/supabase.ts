@@ -1,12 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+// Accept either the EXPO_PUBLIC_ prefixed names (required for bundled Expo builds)
+// or the bare names (usable in Metro dev server / server-side contexts).
+const supabaseUrl =
+  process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? '';
+const supabaseAnonKey =
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY ?? '';
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.error(
-    '[Supabase] Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY. ' +
-    'Set them in Replit Secrets.',
+    '[Supabase] Missing Supabase credentials. ' +
+    'Set EXPO_PUBLIC_SUPABASE_URL + EXPO_PUBLIC_SUPABASE_ANON_KEY (for APK builds) ' +
+    'or SUPABASE_URL + SUPABASE_ANON_KEY (for dev server).',
   );
 }
 

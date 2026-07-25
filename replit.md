@@ -16,11 +16,15 @@ AI-powered Islamic news app — generates multi-language (EN/UR/AR) news article
 | Key | Purpose |
 |-----|---------|
 | `SUPABASE_URL` | Supabase project URL (e.g. https://xxx.supabase.co) |
-| `SUPABASE_PUBLISHABLE_KEY` | Supabase anon key (used by Expo app) |
-| `SUPABASE_SECRET_KEY` | Supabase service role key (used by Express server) |
+| `SUPABASE_ANON_KEY` | Supabase anon key (used by Expo app) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (used by Express server) |
 | `SUPABASE_DB_PASSWORD` | Supabase postgres password |
-| `GROQ_KEY_1_WORLD_PALESTINE` through `GROQ_KEY_8_REGIONAL` | Per-agent Groq API keys |
-| `GROQ_API_KEY` | Fallback Groq key |
+| `SUPABASE_DB_REGION` | Supabase DB region (e.g. ap-southeast-1) |
+| `GROQ_KEY_A` | Groq key for agents 1+2: world_palestine, south_asia |
+| `GROQ_KEY_B` | Groq key for agents 3+4: economy, government |
+| `GROQ_KEY_C` | Groq key for agents 5+6: security, scholars_mosques |
+| `GROQ_KEY_D` | Groq key for agents 7+8: madrassas, regional |
+| `GROQ_API_KEY` | Fallback Groq key (optional) |
 | `PEXELS_API_KEY` | Image fetching (Pexels free tier) |
 | `SESSION_SECRET` | Express session signing |
 
@@ -78,7 +82,7 @@ to remove the dependency on the Express server for news generation.
 ## Architecture decisions
 
 - Supabase Transaction Pooler (not direct connection) — Replit can't reach port 5432 on db.*.supabase.co directly; the pooler at port 6543 works fine
-- 8 separate Groq API keys — each agent gets its own rate-limit bucket (12k TPM each)
+- 4 Groq API keys shared across 8 agents (2 agents/key) — second agent in each pair waits 25 s to respect the 12k TPM free-tier limit
 - 72-hour TTL on posts — enforced at publish time; auto-delete job removes expired rows
 - Mobile app reads directly from Supabase (zero-latency, no Express hop for reads)
 

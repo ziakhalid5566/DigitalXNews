@@ -3,29 +3,32 @@
  * ║          DigitalXNews — Multi-Agent AI News Generation System              ║
  * ╠══════════════════════════════════════════════════════════════════════════════╣
  * ║                                                                              ║
- * ║  8 specialized AI agents, each with its OWN dedicated Groq API key.        ║
- * ║  This allows all 8 agents to run on SEPARATE Groq rate-limit buckets,      ║
- * ║  so each agent gets the full 12,000 TPM allowance independently.           ║
+ * ║  8 specialized AI agents consolidated onto 4 Groq API keys (2 agents/key). ║
+ * ║  Within each key-pair agents run sequentially with a 25 s stagger to       ║
+ * ║  stay within Groq's free-tier 12,000 TPM limit.                            ║
  * ║                                                                              ║
- * ║  AGENT → ENV KEY MAPPING (set these in Replit Secrets + GitHub Secrets):   ║
+ * ║  KEY → AGENT PAIRING (set these 4 keys in Replit Secrets):                 ║
  * ║                                                                              ║
- * ║  Agent 1 (world_palestine) → GROQ_KEY_1_WORLD_PALESTINE                   ║
- * ║  Agent 2 (south_asia)      → GROQ_KEY_2_SOUTH_ASIA                        ║
- * ║  Agent 3 (economy)         → GROQ_KEY_3_ECONOMY                           ║
- * ║  Agent 4 (government)      → GROQ_KEY_4_GOVERNMENT                        ║
- * ║  Agent 5 (security)        → GROQ_KEY_5_SECURITY                          ║
- * ║  Agent 6 (scholars_mosques)→ GROQ_KEY_6_SCHOLARS_MOSQUES                  ║
- * ║  Agent 7 (madrassas)       → GROQ_KEY_7_MADRASSAS                         ║
- * ║  Agent 8 (regional)        → GROQ_KEY_8_REGIONAL                          ║
+ * ║  GROQ_KEY_A → Agent 1 (world_palestine)  + Agent 2 (south_asia)           ║
+ * ║               Agent 2 waits 25 s after Agent 1 finishes                    ║
  * ║                                                                              ║
- * ║  Fallback: if a specific key is missing, GROQ_API_KEY is used instead.     ║
+ * ║  GROQ_KEY_B → Agent 3 (economy)          + Agent 4 (government)            ║
+ * ║               Agent 4 waits 25 s after Agent 3 finishes                    ║
+ * ║                                                                              ║
+ * ║  GROQ_KEY_C → Agent 5 (security)         + Agent 6 (scholars_mosques)      ║
+ * ║               Agent 6 waits 25 s after Agent 5 finishes                    ║
+ * ║                                                                              ║
+ * ║  GROQ_KEY_D → Agent 7 (madrassas)        + Agent 8 (regional)              ║
+ * ║               Agent 8 waits 25 s after Agent 7 finishes                    ║
+ * ║                                                                              ║
+ * ║  Fallback: if a key is missing, GROQ_API_KEY is used instead.              ║
  * ║                                                                              ║
  * ║  RATE LIMIT STRATEGY:                                                        ║
- * ║  • Each Groq free-tier key = 12,000 TPM (200 tok/s)                        ║
+ * ║  • Each Groq free-tier key = 12,000 TPM                                    ║
  * ║  • Each agent uses ~4,100 tokens (600 input + 3,500 max output)            ║
- * ║  • With separate keys: NO delays needed between agents                      ║
- * ║  • Agents still run sequentially to avoid DB write conflicts                ║
- * ║  • Total runtime: ~8 × 8s API time ≈ 1 minute (down from 4 min)           ║
+ * ║  • 25 s gap between paired agents lets the shared bucket refill            ║
+ * ║  • Between pairs: 2 s gap only (different keys, no refill needed)          ║
+ * ║  • Total runtime: ~(8×8 s API) + (4×25 s stagger) ≈ 3.5 min              ║
  * ║                                                                              ║
  * ║  SAFETY: Content labelled "AI-Generated Summary". No specific facts,       ║
  * ║  quotes, or individuals are fabricated. Source note always generic.        ║
@@ -198,10 +201,19 @@ interface AgentConfig {
   /** Unique agent identifier (used in logs and error messages) */
   name: string;
   /**
-   * Environment variable name holding this agent's dedicated Groq API key.
+   * Environment variable name holding this agent's Groq API key.
+   * Two agents share each key; the second agent in the pair uses delayBeforeMs
+   * to stagger its call and avoid hitting the shared rate-limit bucket.
    * Falls back to GROQ_API_KEY if this env var is not set.
    */
   envKey: string;
+  /**
+   * Milliseconds to wait before this agent starts.
+   * 0 for the first agent in a key-pair (or the first agent overall).
+   * 25000 for the second agent in a key-pair (rate-limit stagger).
+   * 2000 between key-pairs (different buckets, minimal DB-write gap only).
+   */
+  delayBeforeMs: number;
   /** News categories this agent is responsible for */
   categories: Category[];
   systemPrompt: string;
@@ -238,13 +250,13 @@ category, significanceScore (1-10 integer), sourceNote, isBreaking, country (opt
 
 const AGENTS: AgentConfig[] = [
   // ─────────────────────────────────────────────────────────────────────────────
-  // Agent 1 — Global Islamic Affairs + Palestine
-  // Key: GROQ_KEY_1_WORLD_PALESTINE
+  // Agent 1 — Global Islamic Affairs + Palestine          [KEY: GROQ_KEY_A — pair 1/2]
   // Covers: OIC, UN Palestine resolutions, Gaza, West Bank, Al-Aqsa, Muslim diaspora
   // ─────────────────────────────────────────────────────────────────────────────
   {
     name: "world_palestine",
-    envKey: "GROQ_KEY_1_WORLD_PALESTINE",
+    envKey: "GROQ_KEY_A",
+    delayBeforeMs: 0,
     categories: ["World", "Palestine"],
     systemPrompt: `You are a senior international journalist specialising in global Islamic affairs and Palestine.
 Cover: OIC developments, events affecting Muslim communities, UN resolutions on Palestine,
@@ -257,13 +269,14 @@ Category "World" for global affairs, "Palestine" for Palestine-specific.`,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Agent 2 — South Asia
-  // Key: GROQ_KEY_2_SOUTH_ASIA
+  // Agent 2 — South Asia                                  [KEY: GROQ_KEY_A — pair 2/2]
   // Covers: Pakistan, Bangladesh, India Muslims, Afghanistan, Kashmir, Rohingya
+  // 25 s stagger — shares GROQ_KEY_A with Agent 1
   // ─────────────────────────────────────────────────────────────────────────────
   {
     name: "south_asia",
-    envKey: "GROQ_KEY_2_SOUTH_ASIA",
+    envKey: "GROQ_KEY_A",
+    delayBeforeMs: 25000,
     categories: ["South Asia"],
     systemPrompt: `You are an expert journalist covering South Asian Muslim affairs.
 Cover: Pakistan (politics, economy, security), Bangladesh, India's Muslim minority,
@@ -276,13 +289,14 @@ Category always "South Asia".`,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Agent 3 — Islamic Economy & Finance
-  // Key: GROQ_KEY_3_ECONOMY
+  // Agent 3 — Islamic Economy & Finance                   [KEY: GROQ_KEY_B — pair 1/2]
   // Covers: Islamic banking, sukuk, halal economy, Saudi Vision 2030, Gulf finance
+  // 2 s gap after Agent 2 — different key, just a DB-write buffer
   // ─────────────────────────────────────────────────────────────────────────────
   {
     name: "economy",
-    envKey: "GROQ_KEY_3_ECONOMY",
+    envKey: "GROQ_KEY_B",
+    delayBeforeMs: 2000,
     categories: ["Economy"],
     systemPrompt: `You are an Islamic economics and halal finance journalist.
 Cover: Islamic banking (sukuk, sharia-compliant finance), halal economy, Saudi Vision 2030,
@@ -295,13 +309,14 @@ Category always "Economy".`,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Agent 4 — Governance & Politics
-  // Key: GROQ_KEY_4_GOVERNMENT
+  // Agent 4 — Governance & Politics                       [KEY: GROQ_KEY_B — pair 2/2]
   // Covers: elections, legislation, foreign policy in Muslim-majority countries
+  // 25 s stagger — shares GROQ_KEY_B with Agent 3
   // ─────────────────────────────────────────────────────────────────────────────
   {
     name: "government",
-    envKey: "GROQ_KEY_4_GOVERNMENT",
+    envKey: "GROQ_KEY_B",
+    delayBeforeMs: 25000,
     categories: ["Government"],
     systemPrompt: `You are an expert journalist covering governance in Muslim-majority countries.
 Cover: elections, political transitions, legislation affecting Muslims, foreign policy,
@@ -314,13 +329,14 @@ Category always "Government".`,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Agent 5 — Security & Humanitarian
-  // Key: GROQ_KEY_5_SECURITY
+  // Agent 5 — Security & Humanitarian                     [KEY: GROQ_KEY_C — pair 1/2]
   // Covers: conflicts, peace processes, humanitarian crises, refugee situations
+  // 2 s gap after Agent 4 — different key, just a DB-write buffer
   // ─────────────────────────────────────────────────────────────────────────────
   {
     name: "security",
-    envKey: "GROQ_KEY_5_SECURITY",
+    envKey: "GROQ_KEY_C",
+    delayBeforeMs: 2000,
     categories: ["Security"],
     systemPrompt: `You are a security analyst and humanitarian journalist covering Muslim-majority regions.
 Cover: conflicts, peace processes, humanitarian crises, refugee situations (Syria, Yemen, Rohingya),
@@ -333,13 +349,14 @@ Category always "Security".`,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Agent 6 — Islamic Scholars + Mosques
-  // Key: GROQ_KEY_6_SCHOLARS_MOSQUES
+  // Agent 6 — Islamic Scholars + Mosques                  [KEY: GROQ_KEY_C — pair 2/2]
   // Covers: fatwas, Al-Azhar, Mecca/Medina, mosque construction, Quran competitions
+  // 25 s stagger — shares GROQ_KEY_C with Agent 5
   // ─────────────────────────────────────────────────────────────────────────────
   {
     name: "scholars_mosques",
-    envKey: "GROQ_KEY_6_SCHOLARS_MOSQUES",
+    envKey: "GROQ_KEY_C",
+    delayBeforeMs: 25000,
     categories: ["Scholars", "Mosques"],
     systemPrompt: `You are an expert covering Islamic scholarship, religious institutions, and sacred sites.
 Cover: major fatwas, Islamic conferences, Al-Azhar University, Mecca/Medina developments,
@@ -353,13 +370,14 @@ Category "Scholars" for scholarly news, "Mosques" for mosque/sacred-sites.`,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Agent 7 — Madrassas & Islamic Education
-  // Key: GROQ_KEY_7_MADRASSAS
+  // Agent 7 — Madrassas & Islamic Education               [KEY: GROQ_KEY_D — pair 1/2]
   // Covers: madrassa reforms, Al-Azhar, IIU, curriculum modernisation, online learning
+  // 2 s gap after Agent 6 — different key, just a DB-write buffer
   // ─────────────────────────────────────────────────────────────────────────────
   {
     name: "madrassas",
-    envKey: "GROQ_KEY_7_MADRASSAS",
+    envKey: "GROQ_KEY_D",
+    delayBeforeMs: 2000,
     categories: ["Madrassas"],
     systemPrompt: `You are an expert on Islamic education and madrassas worldwide.
 Cover: madrassa reforms in Pakistan, Bangladesh, Egypt, Indonesia, India;
@@ -373,13 +391,14 @@ Category always "Madrassas".`,
   },
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // Agent 8 — Africa + Southeast Asia + Turkey + Community
-  // Key: GROQ_KEY_8_REGIONAL
+  // Agent 8 — Africa + Southeast Asia + Turkey + Community [KEY: GROQ_KEY_D — pair 2/2]
   // Covers: Nigeria, Indonesia, Malaysia, Turkey, Western Muslim communities
+  // 25 s stagger — shares GROQ_KEY_D with Agent 7
   // ─────────────────────────────────────────────────────────────────────────────
   {
     name: "regional",
-    envKey: "GROQ_KEY_8_REGIONAL",
+    envKey: "GROQ_KEY_D",
+    delayBeforeMs: 25000,
     categories: ["Africa", "Southeast Asia", "Turkey", "Community"],
     systemPrompt: `You are a regional expert covering Africa, Southeast Asia, Turkey, and Western Muslim communities.
 AFRICA: Nigeria, Senegal, Ethiopia, Kenya, Tanzania, Morocco, Algeria, Tunisia, Somalia, Sudan, Mali, Ghana, Guinea.
@@ -493,41 +512,40 @@ async function generateAgentArticlesSafe(
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Run all 8 agents sequentially.
+ * Run all 8 agents sequentially using the 4-key shared-key strategy.
  *
- * Each agent uses its OWN Groq API key (separate rate-limit bucket).
- * This means NO 22s delay is needed between agents — each runs on a fresh
- * 12,000 TPM allowance.
+ * Key assignment (2 agents share each key):
+ *   GROQ_KEY_A → agents 1 & 2  |  GROQ_KEY_B → agents 3 & 4
+ *   GROQ_KEY_C → agents 5 & 6  |  GROQ_KEY_D → agents 7 & 8
  *
- * A small 2s gap is kept between agents purely to avoid DB write spikes.
+ * Timing:
+ *   • delayBeforeMs = 0     — first agent in a pair (or the very first agent)
+ *   • delayBeforeMs = 25000 — second agent in a pair (25 s stagger so the
+ *                             shared bucket has time to refill before the next
+ *                             ~4,100-token call)
+ *   • delayBeforeMs = 2000  — first agent of a new pair (different key; short
+ *                             gap purely to smooth out DB writes)
  *
- * Total runtime: 8 agents × ~8s API time ≈ ~1 minute (was 4 min with shared key).
- *
- * If a per-agent key is missing, the agent falls back to GROQ_API_KEY and
- * the old 22s gap is restored for that agent to protect the shared bucket.
+ * Total runtime: ~(8 × 8 s API) + (4 × 25 s stagger) ≈ 3.5 minutes.
  */
 export async function generateNewsArticles(): Promise<GeneratedArticle[]> {
   logger.info(
     { agentCount: AGENTS.length },
-    "Starting multi-agent news generation — each agent uses its own Groq API key"
+    "Starting multi-agent news generation — 4 shared Groq keys, 25 s intra-pair stagger"
   );
 
   const all: GeneratedArticle[] = [];
 
-  for (let i = 0; i < AGENTS.length; i++) {
-    const agent = AGENTS[i];
-
-    // Determine delay: 2s normally (separate keys), 22s if falling back to shared key
-    if (i > 0) {
-      const usingSharedKey = !process.env[agent.envKey] && !!process.env.GROQ_API_KEY;
-      const delayMs = usingSharedKey ? 22000 : 2000;
-      if (usingSharedKey) {
-        logger.warn(
-          { agent: agent.name, delayMs },
-          "Using shared key fallback — applying 22s rate-limit delay"
-        );
-      }
-      await sleep(delayMs);
+  for (const agent of AGENTS) {
+    // Apply the per-agent delay defined in the AGENTS config
+    if (agent.delayBeforeMs > 0) {
+      logger.info(
+        { agent: agent.name, delayMs: agent.delayBeforeMs, envKey: agent.envKey },
+        agent.delayBeforeMs >= 25000
+          ? "Intra-pair rate-limit stagger — waiting before shared-key agent"
+          : "Inter-pair buffer — waiting before next key-pair agent"
+      );
+      await sleep(agent.delayBeforeMs);
     }
 
     try {

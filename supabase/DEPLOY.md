@@ -38,31 +38,37 @@ Install Supabase CLI and deploy the news-generation function:
 # Install CLI
 npm install -g supabase
 
-# Login (opens browser)
+# Login — requires a Personal Access Token from:
+#   https://supabase.com/dashboard/account/tokens
+# (This is NOT the service_role key — it's a separate management token)
 supabase login
 
 # Link project
 supabase link --project-ref qyrkrmxggorpbcbjxihp
 
-# Set required secrets for the edge function
-supabase secrets set GROQ_KEY_1_WORLD_PALESTINE=<your-key>
-supabase secrets set GROQ_KEY_2_SOUTH_ASIA=<your-key>
-supabase secrets set GROQ_KEY_3_ECONOMY=<your-key>
-supabase secrets set GROQ_KEY_4_GOVERNMENT=<your-key>
-supabase secrets set GROQ_KEY_5_SECURITY=<your-key>
-supabase secrets set GROQ_KEY_6_SCHOLARS_MOSQUES=<your-key>
-supabase secrets set GROQ_KEY_7_MADRASSAS=<your-key>
-supabase secrets set GROQ_KEY_8_REGIONAL=<your-key>
+# Set required secrets for the edge function (4 keys, 2 agents each)
+supabase secrets set GROQ_KEY_A=<key-for-agents-1-and-2>
+supabase secrets set GROQ_KEY_B=<key-for-agents-3-and-4>
+supabase secrets set GROQ_KEY_C=<key-for-agents-5-and-6>
+supabase secrets set GROQ_KEY_D=<key-for-agents-7-and-8>
 supabase secrets set GROQ_API_KEY=<fallback-key>
 supabase secrets set PEXELS_API_KEY=<your-key>
+# SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are auto-injected by Supabase
 
-# Deploy functions
-supabase functions deploy auto-delete
+# Deploy function
 supabase functions deploy news-generation
 
 # Then schedule news-generation via pg_cron (every 8 hours):
-# INSERT INTO cron.job (schedule, command, nodename, nodeport, database, username, active, jobname)
-# SELECT '0 */8 * * *', 'SELECT net.http_post(url:=''https://qyrkrmxggorpbcbjxihp.supabase.co/functions/v1/news-generation'', headers:=''{}'', body:=''{}'')', ...
+# Run this SQL in Supabase SQL Editor:
+# SELECT cron.schedule(
+#   'digitalxnews-news-generation',
+#   '0 */8 * * *',
+#   $$SELECT net.http_post(
+#     url := 'https://qyrkrmxggorpbcbjxihp.supabase.co/functions/v1/news-generation',
+#     headers := '{"Authorization": "Bearer <SUPABASE_ANON_KEY>"}'::jsonb,
+#     body := '{}'::jsonb
+#   )$$
+# );
 ```
 
 ## 4. Expo App Environment Variables
