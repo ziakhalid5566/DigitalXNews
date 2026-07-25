@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "DigitalXNews",
-    "slug": "islamnashra",
+    "slug": "digital-x-news",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -54,7 +54,7 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "YOUR_EAS_PROJECT_ID"
+        "projectId": "46de0768-0520-4087-90a4-ccfe39862351"
       }
     },
     "experiments": {
