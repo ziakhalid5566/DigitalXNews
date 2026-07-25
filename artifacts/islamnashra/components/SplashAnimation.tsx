@@ -11,7 +11,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Image, StyleSheet, Text, View } from 'react-native';
 
-const FULL_TEXT = 'DigitalXNews';
+const FULL_TEXT = 'اسلام نشرہ';
 const TYPE_DELAY = 110;   // ms per character typed
 const ERASE_DELAY = 65;   // ms per character erased
 const PAUSE_AFTER_TYPE = 700;
@@ -80,30 +80,23 @@ export function SplashAnimation({ onDone }: Props) {
     return () => { cancelled = true; };
   }, [fadeAnim, onDone]);
 
-  // "Digital" white | "X" blue | "News" white
-  const before = displayed.slice(0, 7);
-  const xChar  = displayed.length > 7 ? displayed[7] : '';
-  const after  = displayed.slice(8);
-
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      {/* Actual DX logo */}
+      {/* بسم اللہ */}
+      <Text style={styles.bismillah}>بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ</Text>
+
+      {/* App icon */}
       <Image
-        source={require('@/assets/images/dx-logo.png')}
+        source={require('@/assets/images/icon.png')}
         style={styles.logo}
         resizeMode="contain"
       />
 
       {/* Typewriter title */}
       <View style={styles.titleRow}>
-        <Text style={styles.titleWhite}>{before}</Text>
-        {xChar ? <Text style={styles.titleBlue}>{xChar}</Text> : null}
-        <Text style={styles.titleWhite}>{after}</Text>
+        <Text style={styles.titleWhite}>{displayed}</Text>
         <Animated.Text style={[styles.cursor, { opacity: cursorAnim }]}>|</Animated.Text>
       </View>
-
-      {/* Tagline */}
-      <Text style={styles.tagline}>اسلامی خبریں • Global Islamic News</Text>
     </Animated.View>
   );
 }
@@ -114,12 +107,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#080F20',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 18,
+    gap: 16,
     zIndex: 999,
   },
+  bismillah: {
+    fontSize: 14,
+    fontFamily: 'Inter_400Regular',
+    color: 'rgba(200,215,240,0.70)',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
   logo: {
-    width: 120,
-    height: 120,
+    width: 90,
+    height: 90,
+    borderRadius: 20,
     marginBottom: 4,
   },
   titleRow: {
@@ -128,28 +129,16 @@ const styles = StyleSheet.create({
     minHeight: 46,
   },
   titleWhite: {
-    fontSize: 34,
+    fontSize: 32,
     fontFamily: 'Inter_700Bold',
     color: '#FFFFFF',
     letterSpacing: 0.4,
-  },
-  titleBlue: {
-    fontSize: 34,
-    fontFamily: 'Inter_700Bold',
-    color: '#42A5F5',
-    letterSpacing: 0.4,
+    writingDirection: 'rtl',
   },
   cursor: {
-    fontSize: 34,
+    fontSize: 32,
     fontFamily: 'Inter_400Regular',
     color: '#42A5F5',
     marginLeft: 2,
-  },
-  tagline: {
-    fontSize: 13,
-    fontFamily: 'Inter_400Regular',
-    color: 'rgba(200,215,240,0.55)',
-    letterSpacing: 0.5,
-    marginTop: -6,
   },
 });
