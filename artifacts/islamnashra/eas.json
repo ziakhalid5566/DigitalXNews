@@ -11,7 +11,8 @@
         "gradleCommand": ":app:assembleRelease"
       },
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "https://qyrkrmxggorpbcbjxihp.supabase.co"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://qyrkrmxggorpbcbjxihp.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5cmtybXhnZ29ycGJjYmp4aWhwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5NTQwMzksImV4cCI6MjEwMDUzMDAzOX0.2jch6sRil2YCBuD5y0s3gqBC_QQv1pQaA6o86lvzNPk"
       }
     },
     "production": {
@@ -19,7 +20,8 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "https://qyrkrmxggorpbcbjxihp.supabase.co"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://qyrkrmxggorpbcbjxihp.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF5cmtybXhnZ29ycGJjYmp4aWhwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ5NTQwMzksImV4cCI6MjEwMDUzMDAzOX0.2jch6sRil2YCBuD5y0s3gqBC_QQv1pQaA6o86lvzNPk"
       }
     }
   },
