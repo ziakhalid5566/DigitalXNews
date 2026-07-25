@@ -14,9 +14,21 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": false
+      "supportsTablet": false,
+      "bundleIdentifier": "com.digitalxnews.islamnashra"
     },
-    "android": {},
+    "android": {
+      "package": "com.digitalxnews.islamnashra",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/icon.png",
+        "backgroundColor": "#1a5c38"
+      },
+      "permissions": [
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
@@ -40,6 +52,11 @@
         }
       ]
     ],
+    "extra": {
+      "eas": {
+        "projectId": "YOUR_EAS_PROJECT_ID"
+      }
+    },
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

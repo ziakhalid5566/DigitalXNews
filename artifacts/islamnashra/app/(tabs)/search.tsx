@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,12 +8,13 @@ import {
   Pressable,
   Platform,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
-import { useListPosts } from '@/lib/api';
+import { useListPosts, useSearchPosts } from '@/lib/api';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getLocalizedContent } from '@/contexts/LanguageContext';
@@ -55,6 +56,7 @@ const STRINGS = {
     hint: 'اوپر لکھ کر خبریں تلاش کریں',
     categories: 'زمرے',
     allCategories: 'سب',
+    searching: 'تلاش جاری ہے...',
   },
   ar: {
     title: 'بحث',
@@ -68,6 +70,7 @@ const STRINGS = {
     hint: 'اكتب فوق للبحث في الأخبار',
     categories: 'التصنيفات',
     allCategories: 'الكل',
+    searching: 'جارٍ البحث...',
   },
   en: {
     title: 'Search',
@@ -81,20 +84,15 @@ const STRINGS = {
     hint: 'Search across all Islamic news',
     categories: 'Categories',
     allCategories: 'All',
+    searching: 'Searching...',
   },
 } as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function normalize(str: string) { return str.toLowerCase().trim(); }
 
-function postMatchesQuery(post: Post, q: string, cat: string): boolean {
-  if (cat !== 'All' && post.category !== cat) return false;
-  const n = normalize(q);
-  return [
-    post.titleEn, post.titleUr, post.titleAr,
-    post.bodyEn?.slice(0, 200), post.bodyUr?.slice(0, 200), post.bodyAr?.slice(0, 200),
-    post.title, post.body?.slice(0, 200), post.category,
-  ].filter(Boolean).some((f) => normalize(f as string).includes(n));
+function postMatchesCategory(post: Post, cat: string): boolean {
+  return cat === 'All' || post.category === cat;
 }
 
 function matchScore(post: Post, q: string): number {
@@ -105,6 +103,18 @@ function matchScore(post: Post, q: string): number {
   if (post.isBreaking) s += 3;
   s += Math.min((post.viewsCount ?? 0) + (post.likesCount ?? 0), 20);
   return s;
+}
+
+// Debounce helper so we don't fire a Supabase query on every keystroke
+function useDebounced(value: string, delayMs = 400): string {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delayMs);
+    return () => clearTimeout(timer);
+  }, [value, delayMs]);
+
+  return debounced;
 }
 
 // ─── HighlightText ────────────────────────────────────────────────────────────
@@ -245,8 +255,26 @@ export default function SearchScreen() {
   const [activeCategory, setActiveCategory] = useState('All');
   const inputRef = useRef<TextInput>(null);
 
-  const { data, isLoading } = useListPosts({ limit: 150 });
-  const allPosts: Post[] = data?.posts ?? [];
+  // Debounce the query before sending to Supabase
+  const debouncedQuery = useDebounced(query, 400);
+  const hasQuery = query.trim().length > 0;
+
+  // --- Server-side search (fires when user has typed something) ---
+  const {
+    data: serverResults,
+    isLoading: isSearching,
+    isFetching: isSearchFetching,
+  } = useSearchPosts(
+    { query: debouncedQuery, category: activeCategory, limit: 100 },
+    { enabled: debouncedQuery.trim().length > 0 },
+  );
+
+  // --- Category browse feed (used when no text query) ---
+  const { data: feedData, isLoading: isFeedLoading } = useListPosts(
+    { limit: 150 },
+    { query: { enabled: !hasQuery } },
+  );
+  const allPosts: Post[] = feedData?.posts ?? [];
 
   const breakingPosts = useMemo(
     () => allPosts.filter((p) => p.isBreaking).slice(0, 5),
@@ -256,25 +284,37 @@ export default function SearchScreen() {
   const trendingPosts = useMemo(() => {
     const breakingIds = new Set(breakingPosts.map((p) => p.id));
     return [...allPosts]
-      .filter((p) => !breakingIds.has(p.id) && (activeCategory === 'All' || p.category === activeCategory))
+      .filter((p) => !breakingIds.has(p.id) && postMatchesCategory(p, activeCategory))
       .sort((a, b) => (b.viewsCount + b.likesCount) - (a.viewsCount + a.likesCount))
       .slice(0, 10);
   }, [allPosts, breakingPosts, activeCategory]);
 
-  const results = useMemo<Post[]>(() => {
-    const q = query.trim();
-    if (!q && activeCategory === 'All') return [];
-    if (!q && activeCategory !== 'All') {
-      return allPosts.filter((p) => p.category === activeCategory)
-        .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-    }
+  // --- What to show ---
+  //  • hasQuery → server results (real DB search across all posts)
+  //  • activeCategory !== All, no query → client-filtered feed posts
+  //  • no query, All category → browsing mode (breaking + trending)
+  const categoryOnlyResults = useMemo(() => {
+    if (hasQuery || activeCategory === 'All') return [];
     return allPosts
-      .filter((p) => postMatchesQuery(p, q, activeCategory))
-      .sort((a, b) => matchScore(b, q) - matchScore(a, q));
-  }, [query, allPosts, activeCategory]);
+      .filter((p) => p.category === activeCategory)
+      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+  }, [hasQuery, activeCategory, allPosts]);
 
-  const hasQuery = query.trim().length > 0;
-  const showResults = hasQuery || activeCategory !== 'All';
+  const showSearchResults = hasQuery;
+  const showCategoryResults = !hasQuery && activeCategory !== 'All';
+  const showBrowse = !hasQuery && activeCategory === 'All';
+
+  const isLoading = showSearchResults
+    ? (isSearching || isSearchFetching)
+    : isFeedLoading;
+
+  const results: Post[] = showSearchResults
+    ? (serverResults ?? []).filter(p => postMatchesCategory(p, activeCategory))
+    : showCategoryResults
+      ? categoryOnlyResults
+      : [];
+
+  const showResults = showSearchResults || showCategoryResults;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -288,10 +328,14 @@ export default function SearchScreen() {
         {/* Search bar */}
         <View style={[styles.searchRow, { paddingBottom: 12 }]}>
           <View style={[styles.searchBox, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
-            <Ionicons
-              name="search-outline" size={18} color="rgba(255,255,255,0.7)"
-              style={{ marginRight: 8 }}
-            />
+            {isSearchFetching && hasQuery ? (
+              <ActivityIndicator size="small" color="rgba(255,255,255,0.7)" style={{ marginRight: 8 }} />
+            ) : (
+              <Ionicons
+                name="search-outline" size={18} color="rgba(255,255,255,0.7)"
+                style={{ marginRight: 8 }}
+              />
+            )}
             <TextInput
               ref={inputRef}
               style={[styles.searchInput, { color: '#FFF', textAlign: isRTL ? 'right' : 'left' }]}
@@ -386,7 +430,7 @@ export default function SearchScreen() {
             />
           </>
         )
-      ) : (
+      ) : showBrowse ? (
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
@@ -468,7 +512,7 @@ export default function SearchScreen() {
             </View>
           )}
         </ScrollView>
-      )}
+      ) : null}
     </View>
   );
 }

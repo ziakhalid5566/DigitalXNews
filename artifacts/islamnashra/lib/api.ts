@@ -96,6 +96,64 @@ export function useListPosts(
 }
 
 /**
+ * Server-side full-text search across all non-expired posts.
+ *
+ * Searches title_en, title_ur, title_ar, body_en, body_ur, body_ar, and
+ * category using Supabase's `ilike` (case-insensitive substring match).
+ * Runs on the Supabase backend so it searches the entire database, not just
+ * the most recent 150 posts loaded for the home feed.
+ *
+ * Also supports category filtering (pass category !== 'All' to narrow results).
+ */
+export function useSearchPosts(
+  params: { query: string; category?: string; limit?: number },
+  options: { enabled?: boolean } = {},
+) {
+  const { query: searchQuery, category, limit = 100 } = params;
+  const trimmed = searchQuery.trim();
+  const enabled = (options.enabled ?? true) && trimmed.length > 0;
+
+  return useQuery({
+    queryKey: ['search', trimmed, category ?? 'All'],
+    enabled,
+    queryFn: async () => {
+      const now = new Date().toISOString();
+      const pattern = `%${trimmed}%`;
+
+      // Supabase OR filter across all text columns
+      let query = supabase
+        .from('posts')
+        .select('*')
+        .gt('expires_at', now)
+        .or(
+          [
+            `title_en.ilike.${pattern}`,
+            `title_ur.ilike.${pattern}`,
+            `title_ar.ilike.${pattern}`,
+            `body_en.ilike.${pattern}`,
+            `body_ur.ilike.${pattern}`,
+            `body_ar.ilike.${pattern}`,
+            `title.ilike.${pattern}`,
+            `category.ilike.${pattern}`,
+          ].join(','),
+        )
+        .order('published_at', { ascending: false })
+        .limit(limit);
+
+      if (category && category !== 'All') {
+        query = query.eq('category', category);
+      }
+
+      const { data, error } = await query;
+      if (error) throw new Error(error.message);
+
+      return (data as PostRow[]).map(mapPost);
+    },
+    staleTime: 30_000,
+  });
+}
+
+/**
  * Fetch a single post by ID.
  * Matches the shape previously returned by useGetPost.
  */
