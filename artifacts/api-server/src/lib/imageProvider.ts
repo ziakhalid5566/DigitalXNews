@@ -33,7 +33,7 @@ export interface ImageResult {
 // ---------------------------------------------------------------------------
 // Deduplication — rolling window of the last RECENT_MAX image URLs used
 // ---------------------------------------------------------------------------
-const RECENT_MAX = 20;
+const RECENT_MAX = 40;
 const recentlyUsedUrls = new Set<string>();
 const recentlyUsedQueue: string[] = [];
 
@@ -64,11 +64,19 @@ const STOP_WORDS = new Set([
 
 /** Visual anchor words mapped from category — ensures Pexels returns Islamic imagery */
 const CATEGORY_ANCHORS: Record<string, string> = {
-  Palestine:   "Palestine mosque",
-  World:       "Islamic architecture",
-  "South Asia":"mosque Islamic",
-  Scholars:    "Islamic scholars mosque",
-  Community:   "Muslim community",
+  Palestine:        "Palestine mosque Gaza",
+  World:            "Islamic architecture mosque",
+  "South Asia":     "Pakistan mosque Islamic",
+  Scholars:         "Islamic scholar mosque university",
+  Community:        "Muslim community mosque",
+  Economy:          "Islamic banking finance gold",
+  Government:       "parliament government building",
+  Security:         "humanitarian relief refugee",
+  Mosques:          "grand mosque mecca medina",
+  Madrassas:        "Islamic school education students",
+  Africa:           "Africa mosque Islamic",
+  "Southeast Asia": "Indonesia Malaysia mosque",
+  Turkey:           "Turkey Istanbul mosque Ottoman",
 };
 
 function buildSearchQuery(titleEn: string, category: string): string {
@@ -160,7 +168,7 @@ export async function fetchImage(
   logger.debug({ query, title: article.titleEn }, "imageProvider: built search query");
 
   // --- Primary query: headline keywords + category anchor, 5 candidates ---
-  const primary = await searchPexels(apiKey, query, 5);
+  const primary = await searchPexels(apiKey, query, 10);
   if (primary?.photos?.length) {
     logger.debug(
       { totalResults: primary.total_results, query },
@@ -171,7 +179,7 @@ export async function fetchImage(
       markUsed(pick.src.large);
       return { url: pick.src.large, attribution: `Photo by ${pick.photographer} on Pexels` };
     }
-    logger.debug({ query }, "imageProvider: all 5 primary results already used, trying broader query");
+    logger.debug({ query }, "imageProvider: all 10 primary results already used, trying broader query");
   }
 
   // --- Broader fallback: just category anchor + "Islamic" ---

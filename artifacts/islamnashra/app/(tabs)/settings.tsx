@@ -12,23 +12,6 @@ import { useGetPreferences, useUpsertPreferences } from '@/lib/api';
 import { useLanguage, LANGUAGE_OPTIONS } from '@/contexts/LanguageContext';
 import { registerForPushNotificationsAsync, type PushRegistrationResult } from '@/hooks/usePushNotifications';
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const CATEGORIES = [
-  { key: 'World', emoji: '🌍' },
-  { key: 'Palestine', emoji: '🇵🇸' },
-  { key: 'South Asia', emoji: '🌏' },
-  { key: 'Economy', emoji: '💰' },
-  { key: 'Government', emoji: '🏛️' },
-  { key: 'Security', emoji: '🛡️' },
-  { key: 'Scholars', emoji: '📚' },
-  { key: 'Mosques', emoji: '🕌' },
-  { key: 'Madrassas', emoji: '🎓' },
-  { key: 'Africa', emoji: '🌍' },
-  { key: 'Southeast Asia', emoji: '🏝️' },
-  { key: 'Turkey', emoji: '🇹🇷' },
-  { key: 'Community', emoji: '👥' },
-];
-
 const LANG_FLAGS: Record<string, string> = { en: '🇬🇧', ur: '🇵🇰', ar: '🇸🇦' };
 
 const DEVICE_ID_KEY = 'deviceId';
@@ -46,8 +29,6 @@ const STRINGS = {
     deviceToken: 'ڈیوائس ٹوکن',
     registered: '✓ رجسٹرڈ',
     notRegistered: 'غیر رجسٹرڈ',
-    catSec: 'زمرہ الرٹ',
-    catDesc: 'مخصوص زمروں کی بریکنگ نیوز',
     aboutSec: 'ایپ کے بارے میں',
     aboutTxt: 'DigitalXNews AI ٹیکنالوجی سے عالمی اسلامی خبریں جمع کرتا ہے۔ تمام مواد AI تیار کردہ خلاصہ ہے — اہم فیصلوں کے لیے اصل ذرائع سے تصدیق کریں۔',
     version: 'ورژن',
@@ -64,8 +45,6 @@ const STRINGS = {
     deviceToken: 'رمز الجهاز',
     registered: '✓ مسجّل',
     notRegistered: 'غير مسجّل',
-    catSec: 'تنبيهات التصنيفات',
-    catDesc: 'أخبار عاجلة لتصنيفات محددة',
     aboutSec: 'عن التطبيق',
     aboutTxt: 'يجمع DigitalXNews الأخبار الإسلامية العالمية بتقنية الذكاء الاصطناعي. جميع المحتويات ملخصات AI — تحقق من المصادر الأصلية للقرارات المهمة.',
     version: 'الإصدار',
@@ -82,8 +61,6 @@ const STRINGS = {
     deviceToken: 'Device token',
     registered: '✓ Registered',
     notRegistered: 'Not registered',
-    catSec: 'Category Alerts',
-    catDesc: 'Breaking news for specific categories',
     aboutSec: 'About',
     aboutTxt: 'DigitalXNews uses AI to compile global Islamic news summaries. Content is AI-generated — verify with primary sources for critical decisions.',
     version: 'Version',
@@ -188,20 +165,7 @@ export default function SettingsScreen() {
     });
   }, [deviceId, prefs, pushToken, upsertMutation]);
 
-  const handleToggleCategory = useCallback((category: string) => {
-    if (!deviceId) return;
-    const current = prefs?.followedCategories || [];
-    const newList = current.includes(category)
-      ? current.filter((c) => c !== category)
-      : [...current, category];
-    upsertMutation.mutate({
-      data: { deviceId, notificationsEnabled: prefs?.notificationsEnabled ?? false, followedCategories: newList },
-    });
-  }, [deviceId, prefs, upsertMutation]);
-
   const isNotifEnabled = prefs?.notificationsEnabled ?? false;
-  const followedCats = prefs?.followedCategories || [];
-
   return (
     <ScrollView
       style={[sStyles.root, { backgroundColor: colors.background }]}
@@ -286,34 +250,7 @@ export default function SettingsScreen() {
         )}
       </Section>
 
-      {/* ── Category Alerts ── */}
-      <Section title={s.catSec} subtitle={s.catDesc} colors={colors}>
-        {CATEGORIES.map((cat, i) => {
-          const isFollowed = followedCats.includes(cat.key);
-          return (
-            <Pressable
-              key={cat.key}
-              style={({ pressed }) => [
-                sStyles.row,
-                i < CATEGORIES.length - 1 && [sStyles.rowBorder, { borderBottomColor: colors.border }],
-                pressed && { backgroundColor: colors.muted },
-              ]}
-              onPress={() => handleToggleCategory(cat.key)}
-            >
-              <View style={sStyles.rowLeft}>
-                <Text style={sStyles.flagTxt}>{cat.emoji}</Text>
-                <Text style={[sStyles.rowTxt, { color: colors.cardForeground }]}>{cat.key}</Text>
-              </View>
-              <Switch
-                value={isFollowed}
-                onValueChange={() => handleToggleCategory(cat.key)}
-                trackColor={{ false: colors.muted, true: colors.primary }}
-                thumbColor={colors.card}
-              />
-            </Pressable>
-          );
-        })}
-      </Section>
+
 
       {/* ── About ── */}
       <Section title={s.aboutSec} colors={colors}>

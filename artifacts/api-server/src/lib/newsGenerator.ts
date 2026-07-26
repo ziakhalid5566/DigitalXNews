@@ -269,7 +269,7 @@ ABSOLUTE RULES — never violate:
 URDU RULES — STRICTLY FOLLOW:
 - Write title_ur and body_ur in PURE Urdu script (نستعلیق). Every sentence must end with Urdu punctuation (۔) and be grammatically complete.
 - CORRECT URDU WORDS to use: حکومت (government), معیشت (economy), مسجد (mosque), مدرسہ (madrassa), علماء (scholars), فلسطین (Palestine), امریکہ (America), اسرائیل (Israel), جنگ (war), امن (peace), پاکستان (Pakistan), بھارت (India), بنگلہ دیش (Bangladesh), افغانستان (Afghanistan), ترکی (Turkey), سعودی عرب (Saudi Arabia), ایران (Iran), مصر (Egypt), نائیجیریا (Nigeria), اقوام متحدہ (United Nations).
-- For technical/foreign terms WITHOUT a standard Urdu equivalent (e.g. GDP, AI, sanctions, ceasefire, humanitarian, bilateral, summit, referendum, coup), write them in Roman English — do NOT transliterate them into Urdu script.
+- ENGLISH FALLBACK — MOST IMPORTANT: If you are even slightly unsure how to write ANY word correctly in Urdu script, WRITE IT IN PLAIN ENGLISH INSTEAD. Never guess. Never attempt a broken transliteration. Prefer correct English over garbled Urdu. Examples: write "ceasefire" not سیزفائر; write "GDP" not broken Urdu; write "sanctions" not a wrong transliteration. When in doubt → English.
 - FORBIDDEN: mixing Hindi/Devanagari words, Chinese characters, or any non-Arabic/Urdu Unicode with Urdu text.
 - Each Urdu sentence must be natural and fluent — a Pakistani reader should find it easy to read. Avoid literal word-for-word translation from English.
 - body_ur length: 80-100 Urdu words minimum. Do NOT write short stubs.
@@ -310,7 +310,8 @@ Cover: OIC developments, events affecting Muslim communities, UN resolutions on 
 Gaza humanitarian situation, West Bank settlements, Al-Aqsa Mosque, Muslim diaspora issues.
 ${BASE_SAFETY_RULES}`,
     userPrompt: `Generate {count} distinct news summaries covering World Islamic affairs and Palestine.
-Each body 80-100 words per language. Cover different countries.
+Each body 150-200 words per language. Cover different countries.
+Include: the name of any key person mentioned, the organization or news agency that reported it (e.g. Reuters, Al Jazeera, OIC, UN), and the specific country or city context.
 Category "World" for global affairs, "Palestine" for Palestine-specific.`,
     articleCount: 2,
   },
@@ -330,7 +331,8 @@ Cover: Pakistan (politics, economy, security), Bangladesh, India's Muslim minori
 Afghanistan, Kashmir, Rohingya refugees. Governance, economic policies, religious freedom, social issues.
 ${BASE_SAFETY_RULES}`,
     userPrompt: `Generate {count} distinct news summaries covering South Asian Muslim affairs.
-Each body 80-100 words per language. Cover different countries (Pakistan, Bangladesh, India, Afghanistan).
+Each body 150-200 words per language. Cover different countries (Pakistan, Bangladesh, India, Afghanistan).
+Include: the name of any key person, official, or religious leader mentioned; the organization or news source (e.g. Dawn, The Hindu, Geo News, Al Jazeera); and the specific city or region.
 Category always "South Asia".`,
     articleCount: 2,
   },
@@ -350,7 +352,8 @@ Cover: Islamic banking (sukuk, sharia-compliant finance), halal economy, Saudi V
 Gulf financial news, Islamic waqf, zakat funds, halal market growth, OIC economic cooperation.
 ${BASE_SAFETY_RULES}`,
     userPrompt: `Generate {count} distinct news summaries on the Islamic economy and halal finance.
-Each body 80-100 words per language. Cover different countries/topics.
+Each body 150-200 words per language. Cover different countries/topics.
+Include: names of key institutions (e.g. Islamic Development Bank, Saudi Vision 2030 authority), officials or experts quoted, and the reporting news source.
 Category always "Economy".`,
     articleCount: 2,
   },
@@ -370,7 +373,8 @@ Cover: elections, political transitions, legislation affecting Muslims, foreign 
 Saudi Arabia, UAE, Turkey, Iran, Pakistan, Malaysia, Indonesia, Egypt, Morocco, Jordan.
 ${BASE_SAFETY_RULES}`,
     userPrompt: `Generate {count} distinct news summaries on governance in Muslim-majority countries.
-Each body 80-100 words per language. Cover different countries.
+Each body 150-200 words per language. Cover different countries.
+Include: the name of any key person mentioned, the organization or news agency that reported it (e.g. Reuters, Al Jazeera, OIC, UN), and the specific country or city context.
 Category always "Government".`,
     articleCount: 2,
   },
@@ -390,7 +394,8 @@ Cover: conflicts, peace processes, humanitarian crises, refugee situations (Syri
 Sahel security, Somalia, Libya, Afghan humanitarian situation, earthquake/flood relief.
 ${BASE_SAFETY_RULES}`,
     userPrompt: `Generate {count} distinct news summaries on security and humanitarian situations.
-Each body 80-100 words per language. Cover different regions (Middle East, Africa, Asia).
+Each body 150-200 words per language. Cover different regions (Middle East, Africa, Asia).
+Include: the specific location (city, province), names of any organizations or officials involved, UN or NGO reports cited, and the news agency reporting it.
 Category always "Security".`,
     articleCount: 2,
   },
@@ -411,7 +416,8 @@ Masjid al-Haram expansions, major mosque construction worldwide, Quran competiti
 prominent Muslim scholars' statements and religious guidance.
 ${BASE_SAFETY_RULES}`,
     userPrompt: `Generate {count} distinct news summaries on Islamic scholars and mosques.
-Each body 80-100 words per language. Mix scholars news with mosque/sacred-sites news.
+Each body 150-200 words per language. Mix scholars news with mosque/sacred-sites news.
+Include: scholar names and their institution (e.g. Al-Azhar, Dar al-Ifta), location of events, and the source (Islamic news outlets, official announcements).
 Category "Scholars" for scholarly news, "Mosques" for mosque/sacred-sites.`,
     articleCount: 2,
   },
@@ -432,7 +438,8 @@ Al-Azhar University, International Islamic Universities, curriculum modernisatio
 Islamic education in Western countries, Quran memorisation programs, online Islamic learning.
 ${BASE_SAFETY_RULES}`,
     userPrompt: `Generate {count} distinct news summaries on madrassas and Islamic education.
-Each body 80-100 words per language. Cover different countries and education levels.
+Each body 150-200 words per language. Cover different countries and education levels.
+Include: names of educational institutions or government bodies, the country and region, key officials or scholars involved, and the reporting source.
 Category always "Madrassas".`,
     articleCount: 2,
   },
@@ -454,7 +461,8 @@ TURKEY: domestic politics, Ottoman heritage, Turkish diaspora, Central Asia.
 COMMUNITY: Western Muslims (UK, USA, Canada, France, Germany), Muslim minority rights, halal lifestyle.
 ${BASE_SAFETY_RULES}`,
     userPrompt: `Generate {count} distinct news summaries covering Africa, Southeast Asia, Turkey, and Muslim communities.
-Each body 80-100 words per language. Aim to cover all four regions across your articles.
+Each body 150-200 words per language. Aim to cover all four regions across your articles.
+Include: specific country, city, key person or organization name, and the news agency or outlet reporting the story.
 
 CRITICAL — Category assignment rules (apply strictly):
 - "Africa" → articles about African countries ONLY: Nigeria, Kenya, Senegal, Ethiopia, Tanzania, Morocco, Somalia, Sudan, etc.
@@ -490,7 +498,7 @@ async function generateAgentArticlesSafe(
     ],
     model: "llama-3.3-70b-versatile",
     temperature: 0.65,
-    max_tokens: 3500,
+    max_tokens: 4500,
   });
 
   const raw = completion.choices[0]?.message?.content;
