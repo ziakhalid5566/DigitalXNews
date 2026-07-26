@@ -195,6 +195,41 @@ function getGroqForAgent(agentEnvKey: string, agentName: string): Groq {
   return new Groq({ apiKey: key });
 }
 
+// ─── Urdu Script Sanitizer ───────────────────────────────────────────────────
+/**
+ * Strip characters from non-Urdu/Arabic/Latin Unicode blocks out of Urdu text.
+ *
+ * Valid in Urdu fields:
+ *   • Arabic/Urdu script  (U+0600–U+06FF, U+0750–U+077F, U+FB50–U+FDFF, U+FE70–U+FEFF)
+ *   • Standard Latin      (a-z A-Z) — for English technical terms
+ *   • ASCII digits        (0-9) and printable ASCII punctuation / spaces
+ *
+ * Anything else (Chinese CJK, Devanagari, Cyrillic, Greek, Bengali, etc.) is
+ * stripped and a warning logged so we can detect recurring model failures.
+ */
+function sanitizeUrduScript(text: string, field: string, agentName: string): string {
+  // Ranges to strip: CJK Unified (U+4E00–U+9FFF), CJK Extension A (U+3400–U+4DBF),
+  // CJK Symbols (U+3000–U+303F), Fullwidth (U+FF00–U+FFEF),
+  // Devanagari (U+0900–U+097F), Bengali (U+0980–U+09FF), Gurmukhi (U+0A00–U+0A7F),
+  // Gujarati (U+0A80–U+0AFF), Oriya (U+0B00–U+0B7F), Tamil (U+0B80–U+0BFF),
+  // Telugu (U+0C00–U+0C7F), Kannada (U+0C80–U+0CFF), Malayalam (U+0D00–U+0D7F),
+  // Cyrillic (U+0400–U+04FF), Greek (U+0370–U+03FF), Thai (U+0E00–U+0E7F),
+  // CJK Compatibility (U+F900–U+FAFF)
+  const FOREIGN =
+    /[一-鿿㐀-䶿　-〿＀-￯ऀ-ॿঀ-৿਀-੿઀-૿଀-୿஀-௿ఀ-౿ಀ-೿ഀ-ൿЀ-ӿͰ-Ͽ฀-๿豈-﫿]/g;
+
+  const hits = text.match(FOREIGN);
+  if (hits && hits.length > 0) {
+    const unique = [...new Set(hits)].join('');
+    logger.warn(
+      { agent: agentName, field, chars: unique, count: hits.length, preview: text.slice(0, 120) },
+      "sanitizeUrduScript: foreign script characters stripped from Urdu field",
+    );
+    return text.replace(FOREIGN, ' ').replace(/  +/g, ' ').trim();
+  }
+  return text;
+}
+
 // ─── Agent Configuration ──────────────────────────────────────────────────────
 
 interface AgentConfig {
@@ -238,6 +273,16 @@ URDU RULES:
   attempt Urdu-script transliterations that produce garbled or unreadable text.
 - Common Urdu words (جنگ، معیشت، حکومت، مسجد، مدرسہ، امن، بحران) must be written in Urdu script.
 - When in doubt between a garbled transliteration and a clear English word, always prefer English.
+
+URDU SCRIPT ENFORCEMENT — ZERO TOLERANCE:
+- FORBIDDEN in title_ur and body_ur: Chinese/CJK characters (e.g. 规، 漢、字), Devanagari/Hindi
+  script (e.g. देवनागरी، तरीक), Cyrillic, Greek, Bengali, Tamil, Telugu, or ANY Unicode block
+  other than: Arabic/Urdu (U+0600–U+06FF, U+FB50–U+FDFF, U+FE70–U+FEFF), standard Latin
+  a-z A-Z (for English technical terms only), ASCII digits 0-9, and standard punctuation.
+- A SINGLE Chinese or Devanagari character anywhere in title_ur or body_ur is a CRITICAL failure.
+- If you cannot express a concept in proper Urdu script or clear Roman English, OMIT it entirely.
+- Do NOT transliterate: when uncertain, write the English word directly (e.g. write "summit" not a
+  garbled attempt at transliteration that mixes in wrong Unicode blocks).
 
 ARABIC RULES:
 - Clear Modern Standard Arabic (فصحى) with newspaper register
@@ -482,8 +527,14 @@ async function generateAgentArticlesSafe(
 
       const mapped: GeneratedArticle = {
         ...a,
-        title_ur: typeof a.title_ur === "string" ? a.title_ur : a.title_en,
-        body_ur: typeof a.body_ur === "string" ? a.body_ur : a.body_en,
+        title_ur: sanitizeUrduScript(
+          typeof a.title_ur === "string" ? a.title_ur : a.title_en,
+          "title_ur", agent.name,
+        ),
+        body_ur: sanitizeUrduScript(
+          typeof a.body_ur === "string" ? a.body_ur : a.body_en,
+          "body_ur", agent.name,
+        ),
         title_ar: typeof a.title_ar === "string" ? a.title_ar : a.title_en,
         body_ar: typeof a.body_ar === "string" ? a.body_ar : a.body_en,
         sourceNote: "Compiled from multiple international sources",
