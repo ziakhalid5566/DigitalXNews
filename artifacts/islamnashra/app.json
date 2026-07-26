@@ -19,6 +19,7 @@
     },
     "android": {
       "package": "com.digitalxnews.islamnashra",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#1a5c38"

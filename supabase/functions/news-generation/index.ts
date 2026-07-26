@@ -1,9 +1,16 @@
 /**
  * Supabase Edge Function: news-generation
  *
- * Ports the 8-agent AI news generation pipeline from the Express server to Deno.
- * 4 shared Groq keys (2 agents per key), with a 25 s stagger inside each pair
- * to stay within Groq's free-tier 12,000 TPM rate limit.
+ * Sequential single-agent mode: each HTTP call runs exactly ONE agent, cycling
+ * 0→1→2→…→7→0→… via the `generation_state` table.  pg_cron invokes this
+ * function every 15 minutes so a fresh pair of articles arrives every 15 min
+ * and the full 8-agent cycle completes in 2 hours before repeating.
+ *
+ * TOKEN BUDGET (Groq free tier = 100k TPD per key, 4 keys total):
+ *   Each agent:  ~4,100 tokens (600 input + 3,500 max output)
+ *   Agents/key:  2  (key A→agents 0&1, B→2&3, C→4&5, D→6&7)
+ *   Calls/key/day: 12 cycles × 2 agents = 24 calls × 4,100 = 98,400/key ✓
+ *   No intra-pair stagger needed — each agent gets its own 15-min window.
  *
  * Required secrets (set via `supabase secrets set`):
  *   GROQ_KEY_A   → agents: world_palestine + south_asia
@@ -470,104 +477,138 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // Seed the deduplication set from recent posts BEFORE generating articles.
+  // ── Sequential single-agent mode ──────────────────────────────────────────
+  // Read the current agent index from generation_state, advance it immediately
+  // (prevents duplicate runs if pg_cron fires twice), then run exactly ONE agent.
+
+  // 1. Read current index
+  const { data: stateRow, error: stateReadErr } = await supabase
+    .from("generation_state")
+    .select("current_agent_index")
+    .eq("id", 1)
+    .single();
+
+  if (stateReadErr && stateReadErr.code !== "PGRST116") {
+    console.error("Failed to read generation_state:", stateReadErr);
+  }
+
+  const agentIndex = stateRow?.current_agent_index ?? 0;
+  const nextIndex = (agentIndex + 1) % AGENTS.length;
+  const agent = AGENTS[agentIndex];
+
+  // 2. Advance the index before running (idempotent on concurrent calls)
+  await supabase
+    .from("generation_state")
+    .upsert({
+      id: 1,
+      current_agent_index: nextIndex,
+      last_run_at: new Date().toISOString(),
+      last_agent_name: agent.name,
+    });
+
+  console.log(
+    `Sequential run: agent ${agentIndex}/${AGENTS.length - 1} (${agent.name})` +
+    ` → next will be ${nextIndex} (${AGENTS[nextIndex].name})`,
+  );
+
+  // 3. Seed image deduplication set from recent posts
   const usedImageUrls = await loadRecentImageUrls(supabase, 50);
 
   let published = 0;
   let flagged = 0;
   let imagedCount = 0;
 
-  for (const agent of AGENTS) {
-    if (agent.delayBeforeMs > 0) {
-      console.log(
-        `[${agent.name}] Waiting ${agent.delayBeforeMs}ms before start ` +
-        `(${agent.delayBeforeMs >= 25000 ? "shared-key stagger" : "inter-pair buffer"})`,
-      );
-      await new Promise((r) => setTimeout(r, agent.delayBeforeMs));
-    }
+  // 4. Run only the selected agent — no delay needed (its own 15-min window)
+  try {
+    const articles = await generateForAgent(agent);
+    console.log(`[${agent.name}] Generated ${articles.length} articles`);
 
-    try {
-      const articles = await generateForAgent(agent);
-      console.log(`[${agent.name}] Generated ${articles.length} articles`);
+    for (const article of articles) {
+      if (isFlagged(article.title_en) || isFlagged(article.body_en)) {
+        await supabase.from("flagged_posts").insert({
+          title: article.title_en, body: article.body_en,
+          category: article.category, significance_score: article.significance_score,
+          source_note: article.source_note, flag_reason: "Automated content filter",
+        });
+        flagged++;
+        continue;
+      }
 
-      for (const article of articles) {
-        if (isFlagged(article.title_en) || isFlagged(article.body_en)) {
-          await supabase.from("flagged_posts").insert({
-            title: article.title_en, body: article.body_en,
-            category: article.category, significance_score: article.significance_score,
-            source_note: article.source_note, flag_reason: "Automated content filter",
-          });
-          flagged++;
-          continue;
-        }
+      const now = new Date();
+      const expires_at = new Date(now.getTime() + POST_TTL_MS).toISOString();
 
-        const now = new Date();
-        const expires_at = new Date(now.getTime() + POST_TTL_MS).toISOString();
-
-        // Fetch an image for EVERY post as long as we're within budget.
-        // No significance-score gate — all posts deserve an image.
-        let image_url: string | null = null;
-        let has_image = false;
-        if (imagedCount < DAILY_IMAGE_BUDGET) {
-          image_url = await fetchImage(article.title_en, article.body_en, article.category, usedImageUrls);
-          if (image_url) {
-            has_image = true;
-            imagedCount++;
-            console.log(`[${agent.name}] Image attached (${imagedCount}/${DAILY_IMAGE_BUDGET})`);
-          } else {
-            console.warn(`[${agent.name}] No image found for: "${article.title_en}"`);
-          }
-        }
-
-        const { data: post, error } = await supabase.from("posts").insert({
-          title: article.title_en,
-          body: article.body_en,
-          category: article.category,
-          image_url, has_image,
-          significance_score: article.significance_score,
-          source_note: article.source_note,
-          published_at: now.toISOString(),
-          expires_at,
-          is_breaking: article.is_breaking,
-          title_en: article.title_en, body_en: article.body_en,
-          title_ur: article.title_ur, body_ur: article.body_ur,
-          title_ar: article.title_ar, body_ar: article.body_ar,
-        }).select().single();
-
-        if (error) { console.error("Insert error:", error); continue; }
-        published++;
-
-        // Send push notifications for breaking/high-significance posts
-        if (post && (post.is_breaking || post.significance_score >= 8)) {
-          const { data: prefs } = await supabase
-            .from("user_preferences")
-            .select("push_token, followed_categories, notifications_enabled")
-            .eq("notifications_enabled", true);
-
-          const tokens = (prefs ?? [])
-            .filter((p: { push_token: string | null; followed_categories: string[] }) => {
-              if (!p.push_token) return false;
-              if (post.is_breaking) return true;
-              if (!p.followed_categories?.length) return true;
-              return p.followed_categories.includes(post.category);
-            })
-            .map((p: { push_token: string }) => p.push_token);
-
-          if (tokens.length > 0) {
-            const notifTitle = post.is_breaking ? `🔴 بریکنگ: ${post.title}` : `📰 ${post.title}`;
-            await sendPushNotification(tokens, notifTitle, post.body.substring(0, 120), post.id);
-          }
+      // Fetch an image for every post (single-agent run stays well within budget).
+      let image_url: string | null = null;
+      let has_image = false;
+      if (imagedCount < DAILY_IMAGE_BUDGET) {
+        image_url = await fetchImage(article.title_en, article.body_en, article.category, usedImageUrls);
+        if (image_url) {
+          has_image = true;
+          imagedCount++;
+          console.log(`[${agent.name}] Image attached (${imagedCount}/${DAILY_IMAGE_BUDGET})`);
+        } else {
+          console.warn(`[${agent.name}] No image found for: "${article.title_en}"`);
         }
       }
-    } catch (err) {
-      console.error(`[${agent.name}] Error:`, err);
+
+      const { data: post, error } = await supabase.from("posts").insert({
+        title: article.title_en,
+        body: article.body_en,
+        category: article.category,
+        image_url, has_image,
+        significance_score: article.significance_score,
+        source_note: article.source_note,
+        published_at: now.toISOString(),
+        expires_at,
+        is_breaking: article.is_breaking,
+        title_en: article.title_en, body_en: article.body_en,
+        title_ur: article.title_ur, body_ur: article.body_ur,
+        title_ar: article.title_ar, body_ar: article.body_ar,
+      }).select().single();
+
+      if (error) { console.error("Insert error:", error); continue; }
+      published++;
+
+      // Push notifications for breaking/high-significance posts
+      if (post && (post.is_breaking || post.significance_score >= 8)) {
+        const { data: prefs } = await supabase
+          .from("user_preferences")
+          .select("push_token, followed_categories, notifications_enabled")
+          .eq("notifications_enabled", true);
+
+        const tokens = (prefs ?? [])
+          .filter((p: { push_token: string | null; followed_categories: string[] }) => {
+            if (!p.push_token) return false;
+            if (post.is_breaking) return true;
+            if (!p.followed_categories?.length) return true;
+            return p.followed_categories.includes(post.category);
+          })
+          .map((p: { push_token: string }) => p.push_token);
+
+        if (tokens.length > 0) {
+          const notifTitle = post.is_breaking ? `🔴 بریکنگ: ${post.title}` : `📰 ${post.title}`;
+          await sendPushNotification(tokens, notifTitle, post.body.substring(0, 120), post.id);
+        }
+      }
     }
+  } catch (err) {
+    console.error(`[${agent.name}] Error:`, err);
   }
 
-  console.log(`News generation complete: ${published} published, ${flagged} flagged, ${imagedCount} with images`);
+  console.log(
+    `[${agent.name}] Complete: ${published} published, ${flagged} flagged, ${imagedCount} with images`,
+  );
 
   return new Response(
-    JSON.stringify({ success: true, published, flagged, imaged: imagedCount }),
+    JSON.stringify({
+      success: true,
+      agent: agent.name,
+      agent_index: agentIndex,
+      next_agent: AGENTS[nextIndex].name,
+      published,
+      flagged,
+      imaged: imagedCount,
+    }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } },
   );
 });
