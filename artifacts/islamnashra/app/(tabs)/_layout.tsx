@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, StyleSheet, useColorScheme, View, Text } from 'react-native';
+import { Platform, StyleSheet, useColorScheme, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import { Feather } from '@expo/vector-icons';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,10 +10,7 @@ import { Icon, Label, NativeTabs } from 'expo-router/unstable-native-tabs';
 import { SymbolView } from 'expo-symbols';
 import { useNotifications } from '@/contexts/NotificationsContext';
 
-// IMPORTANT: iOS 26 uses NativeTabs for native tabs with liquid glass support.
-// NativeTabs intentionally does NOT use custom design tokens — liquid glass
-// is a system-level appearance provided by iOS and cannot be overridden.
-// Custom brand colors are applied only on the ClassicTabLayout path (older iOS / Android / web).
+// iOS 26 NativeTabs — liquid glass system appearance
 function NativeTabLayout() {
   return (
     <NativeTabs>
@@ -30,8 +27,8 @@ function NativeTabLayout() {
         <Label>Alerts</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="settings">
-        <Icon sf={{ default: 'gear', selected: 'gear' }} />
-        <Label>Settings</Label>
+        <Icon sf={{ default: 'person', selected: 'person.fill' }} />
+        <Label>Profile</Label>
       </NativeTabs.Trigger>
     </NativeTabs>
   );
@@ -68,10 +65,7 @@ function ClassicTabLayout() {
             />
           ) : isWeb ? (
             <View
-              style={[
-                StyleSheet.absoluteFill,
-                { backgroundColor: colors.background },
-              ]}
+              style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }]}
             />
           ) : null,
       }}
@@ -117,12 +111,12 @@ function ClassicTabLayout() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Settings',
+          title: 'Profile',
           tabBarIcon: ({ color }) =>
             isIOS ? (
-              <SymbolView name="gear" tintColor={color} size={24} />
+              <SymbolView name="person" tintColor={color} size={24} />
             ) : (
-              <Feather name="settings" size={22} color={color} />
+              <Feather name="user" size={22} color={color} />
             ),
         }}
       />

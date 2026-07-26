@@ -47,9 +47,31 @@ function RootLayoutNav() {
   );
 }
 
-/** Inner component so it can use QueryClient hooks. */
+/** Requests push permission on very first launch, then registers silently. */
 function AppWithPush() {
   usePushNotifications();
+
+  // First-launch notification permission request
+  useEffect(() => {
+    const ASKED_KEY = '@notif_permission_asked';
+    (async () => {
+      try {
+        const asked = await import('@react-native-async-storage/async-storage')
+          .then((m) => m.default.getItem(ASKED_KEY));
+        if (asked) return; // already asked
+        // Mark as asked immediately so we never show twice
+        const AS = (await import('@react-native-async-storage/async-storage')).default;
+        await AS.setItem(ASKED_KEY, '1');
+        // Small delay so the UI is fully loaded before the system dialog appears
+        await new Promise((r) => setTimeout(r, 1500));
+        const { status: existing } = await Notifications.getPermissionsAsync();
+        if (existing === 'granted') return; // already have permission
+        await Notifications.requestPermissionsAsync({
+          ios: { allowAlert: true, allowBadge: true, allowSound: true },
+        });
+      } catch {}
+    })();
+  }, []);
 
   return (
     <GestureHandlerRootView>
