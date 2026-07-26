@@ -37,20 +37,20 @@ function getIslamicDate(): { hijri: string; dayName: string } {
 
 // ─── Category config ──────────────────────────────────────────────────────────
 const CATEGORIES = [
-  { key: 'All',           label: 'سب',          emoji: '🌐' },
-  { key: 'World',         label: 'عالمی',        emoji: '🌍' },
-  { key: 'Palestine',     label: 'فلسطین',       emoji: '🇵🇸' },
-  { key: 'South Asia',    label: 'جنوبی ایشیا',  emoji: '🌏' },
-  { key: 'Economy',       label: 'معیشت',        emoji: '💰' },
-  { key: 'Government',    label: 'حکومت',        emoji: '🏛️' },
-  { key: 'Security',      label: 'سیکیورٹی',    emoji: '🛡️' },
-  { key: 'Scholars',      label: 'علماء',        emoji: '📚' },
-  { key: 'Mosques',       label: 'مساجد',        emoji: '🕌' },
-  { key: 'Madrassas',     label: 'مدارس',        emoji: '🎓' },
-  { key: 'Africa',        label: 'افریقہ',       emoji: '🌍' },
-  { key: 'Southeast Asia',label: 'جنوب مشرقی',  emoji: '🏝️' },
-  { key: 'Turkey',        label: 'ترکی',         emoji: '🇹🇷' },
-  { key: 'Community',     label: 'کمیونٹی',      emoji: '👥' },
+  { key: 'All',           label: 'سب',          labelAr: 'الكل',        emoji: '🌐' },
+  { key: 'World',         label: 'عالمی',        labelAr: 'العالم',      emoji: '🌍' },
+  { key: 'Palestine',     label: 'فلسطین',       labelAr: 'فلسطين',      emoji: '🇵🇸' },
+  { key: 'South Asia',    label: 'جنوبی ایشیا',  labelAr: 'جنوب آسيا',  emoji: '🌏' },
+  { key: 'Economy',       label: 'معیشت',        labelAr: 'الاقتصاد',    emoji: '💰' },
+  { key: 'Government',    label: 'حکومت',        labelAr: 'الحكومة',     emoji: '🏛️' },
+  { key: 'Security',      label: 'سیکیورٹی',    labelAr: 'الأمن',       emoji: '🛡️' },
+  { key: 'Scholars',      label: 'علماء',        labelAr: 'العلماء',     emoji: '📚' },
+  { key: 'Mosques',       label: 'مساجد',        labelAr: 'المساجد',     emoji: '🕌' },
+  { key: 'Madrassas',     label: 'مدارس',        labelAr: 'المدارس',     emoji: '🎓' },
+  { key: 'Africa',        label: 'افریقہ',       labelAr: 'أفريقيا',     emoji: '🌍' },
+  { key: 'Southeast Asia',label: 'جنوب مشرقی',  labelAr: 'جنوب شرق آسيا', emoji: '🏝️' },
+  { key: 'Turkey',        label: 'ترکی',         labelAr: 'تركيا',       emoji: '🇹🇷' },
+  { key: 'Community',     label: 'کمیونٹی',      labelAr: 'المجتمع',     emoji: '👥' },
 ];
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ export default function FeedScreen() {
                   },
                 ]}
               >
-                {cat.key === 'All' ? cat.key : (language === 'ur' ? cat.label : cat.key)}
+                {language === 'ur' ? cat.label : (language === 'ar' ? (cat as any).labelAr ?? cat.key : cat.key)}
               </Text>
             </Pressable>
           );

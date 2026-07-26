@@ -141,6 +141,8 @@ export async function runNewsGenerationJob(): Promise<void> {
           post.body ?? "",
           post.category,
           post.isBreaking ?? false,
+          post.titleUr ?? undefined,
+          post.bodyUr ?? undefined,
         );
       }
     }
@@ -157,6 +159,8 @@ async function notifySubscribers(
   body: string,
   category: string,
   isBreaking: boolean,
+  titleUr?: string,
+  bodyUr?: string,
 ): Promise<void> {
   try {
     const prefs = await db
@@ -177,8 +181,12 @@ async function notifySubscribers(
 
     if (tokens.length === 0) return;
 
-    const notifTitle = isBreaking ? `🔴 بریکنگ: ${title}` : `📰 ${title}`;
-    const notifBody = body.substring(0, 120) + (body.length > 120 ? "…" : "");
+    // Prefer Urdu for notification title/body (majority of app users are Urdu speakers).
+    // Fall back to English if Urdu field is empty/missing.
+    const displayTitle = (titleUr && titleUr.trim()) ? titleUr : title;
+    const displayBody  = (bodyUr  && bodyUr.trim())  ? bodyUr  : body;
+    const notifTitle = isBreaking ? `🔴 بریکنگ: ${displayTitle}` : `📰 ${displayTitle}`;
+    const notifBody = displayBody.substring(0, 120) + (displayBody.length > 120 ? "…" : "");
 
     await sendPushNotifications(tokens, notifTitle, notifBody, { postId });
     logger.info({ tokenCount: tokens.length, category, isBreaking }, "Push notifications sent");

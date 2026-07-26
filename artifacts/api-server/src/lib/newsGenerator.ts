@@ -266,13 +266,13 @@ ABSOLUTE RULES — never violate:
 6. sourceNote must always be "Compiled from multiple international sources"
 7. isBreaking: true ONLY for significanceScore >= 9
 
-URDU RULES:
-- Write in standard Urdu script (نستعلیق). Every sentence must be grammatically complete.
-- For technical/borrowed terms with no native Urdu equivalent (e.g. "inflation", "GDP", "ceasefire",
-  "sanctions", "humanitarian", "summit", "bilateral"), write them in Roman English script — do NOT
-  attempt Urdu-script transliterations that produce garbled or unreadable text.
-- Common Urdu words (جنگ، معیشت، حکومت، مسجد، مدرسہ، امن، بحران) must be written in Urdu script.
-- When in doubt between a garbled transliteration and a clear English word, always prefer English.
+URDU RULES — STRICTLY FOLLOW:
+- Write title_ur and body_ur in PURE Urdu script (نستعلیق). Every sentence must end with Urdu punctuation (۔) and be grammatically complete.
+- CORRECT URDU WORDS to use: حکومت (government), معیشت (economy), مسجد (mosque), مدرسہ (madrassa), علماء (scholars), فلسطین (Palestine), امریکہ (America), اسرائیل (Israel), جنگ (war), امن (peace), پاکستان (Pakistan), بھارت (India), بنگلہ دیش (Bangladesh), افغانستان (Afghanistan), ترکی (Turkey), سعودی عرب (Saudi Arabia), ایران (Iran), مصر (Egypt), نائیجیریا (Nigeria), اقوام متحدہ (United Nations).
+- For technical/foreign terms WITHOUT a standard Urdu equivalent (e.g. GDP, AI, sanctions, ceasefire, humanitarian, bilateral, summit, referendum, coup), write them in Roman English — do NOT transliterate them into Urdu script.
+- FORBIDDEN: mixing Hindi/Devanagari words, Chinese characters, or any non-Arabic/Urdu Unicode with Urdu text.
+- Each Urdu sentence must be natural and fluent — a Pakistani reader should find it easy to read. Avoid literal word-for-word translation from English.
+- body_ur length: 80-100 Urdu words minimum. Do NOT write short stubs.
 
 URDU SCRIPT ENFORCEMENT — ZERO TOLERANCE:
 - FORBIDDEN in title_ur and body_ur: Chinese/CJK characters (e.g. 规، 漢、字), Devanagari/Hindi
@@ -283,6 +283,8 @@ URDU SCRIPT ENFORCEMENT — ZERO TOLERANCE:
 - If you cannot express a concept in proper Urdu script or clear Roman English, OMIT it entirely.
 - Do NOT transliterate: when uncertain, write the English word directly (e.g. write "summit" not a
   garbled attempt at transliteration that mixes in wrong Unicode blocks).
+- SELF-CHECK before outputting: scan every character in title_ur and body_ur — if you see any
+  character outside Arabic/Urdu Unicode or standard Latin/ASCII, REMOVE it and rephrase.
 
 ARABIC RULES:
 - Clear Modern Standard Arabic (فصحى) with newspaper register
