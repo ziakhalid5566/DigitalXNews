@@ -24,3 +24,4 @@ timeoutMs = 20000
 [userenv.shared]
 SUPABASE_PROJECT_REF = "qyrkrmxggorpbcbjxihp"
 SUPABASE_DB_REGION = "ap-southeast-1"
+EXPO_PUBLIC_EAS_PROJECT_ID = "46de0768-0520-4087-90a4-ccfe39862351"
