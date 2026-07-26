@@ -22,7 +22,7 @@
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
-        "backgroundColor": "#1a5c38"
+        "backgroundColor": "#0D1B3E"
       },
       "permissions": [
         "android.permission.RECEIVE_BOOT_COMPLETED",
@@ -46,7 +46,7 @@
         "expo-notifications",
         {
           "icon": "./assets/images/icon.png",
-          "color": "#1a5c38",
+          "color": "#1565C0",
           "sounds": [],
           "androidMode": "default",
           "androidCollapsedTitle": "DigitalXNews"

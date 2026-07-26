@@ -21,7 +21,7 @@ import { eq } from "drizzle-orm";
 // Daily image budget — Pexels free tier: 20,000/month → 600/day safe
 const DAILY_IMAGE_BUDGET = 580; // Pexels free tier: 20,000/month
 // Fetch images for articles at or above this significance score
-const IMAGE_SCORE_THRESHOLD = 4; // fetch images for most articles (was 6)
+const IMAGE_SCORE_THRESHOLD = 1; // fetch images for ALL articles
 // 72-hour TTL for all posts
 const POST_TTL_MS = 72 * 60 * 60 * 1000;
 

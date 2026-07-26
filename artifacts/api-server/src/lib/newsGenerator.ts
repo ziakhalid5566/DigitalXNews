@@ -266,28 +266,38 @@ ABSOLUTE RULES — never violate:
 6. sourceNote must always be "Compiled from multiple international sources"
 7. isBreaking: true ONLY for significanceScore >= 9
 
-URDU RULES — STRICTLY FOLLOW:
-- Write title_ur and body_ur in PURE Urdu script (نستعلیق). Every sentence must end with Urdu punctuation (۔) and be grammatically complete.
-- CORRECT URDU WORDS to use: حکومت (government), معیشت (economy), مسجد (mosque), مدرسہ (madrassa), علماء (scholars), فلسطین (Palestine), امریکہ (America), اسرائیل (Israel), جنگ (war), امن (peace), پاکستان (Pakistan), بھارت (India), بنگلہ دیش (Bangladesh), افغانستان (Afghanistan), ترکی (Turkey), سعودی عرب (Saudi Arabia), ایران (Iran), مصر (Egypt), نائیجیریا (Nigeria), اقوام متحدہ (United Nations).
-- ENGLISH FALLBACK — MOST IMPORTANT: If you are even slightly unsure how to write ANY word correctly in Urdu script, WRITE IT IN PLAIN ENGLISH INSTEAD. Never guess. Never attempt a broken transliteration. Prefer correct English over garbled Urdu. Examples: write "ceasefire" not سیزفائر; write "GDP" not broken Urdu; write "sanctions" not a wrong transliteration. When in doubt → English.
-- FORBIDDEN: mixing Hindi/Devanagari words, Chinese characters, or any non-Arabic/Urdu Unicode with Urdu text.
-- Each Urdu sentence must be natural and fluent — a Pakistani reader should find it easy to read. Avoid literal word-for-word translation from English.
-- body_ur length: 80-100 Urdu words minimum. Do NOT write short stubs.
+URDU RULES — PRIMARY GOAL: Write 90%+ of the text in authentic Urdu script (نستعلیق):
+- Every sentence must end with Urdu punctuation (۔) and be grammatically complete.
+- Write in natural, flowing Urdu that a Pakistani newspaper reader would find easy and pleasant to read.
+- body_ur length: 100-130 Urdu words minimum. Do NOT write short stubs.
+
+URDU VOCABULARY — ALWAYS use these exact Urdu words:
+  حکومت (government) · معیشت (economy) · مسجد (mosque) · مدرسہ (madrassa) · علماء (scholars)
+  فلسطین (Palestine) · امریکہ (America) · اسرائیل (Israel) · جنگ (war) · امن (peace)
+  پاکستان (Pakistan) · بھارت (India) · بنگلہ دیش (Bangladesh) · افغانستان (Afghanistan)
+  ترکی (Turkey) · سعودی عرب (Saudi Arabia) · ایران (Iran) · مصر (Egypt)
+  نائیجیریا (Nigeria) · اقوام متحدہ (United Nations) · آزادی (freedom) · انصاف (justice)
+  تعلیم (education) · صحت (health) · امداد (aid) · پناہ گزین (refugee) · قرارداد (resolution)
+  سفارتکاری (diplomacy) · انتخابات (elections) · اتحاد (alliance) · مذاکرات (negotiations)
+  بحران (crisis) · خطہ (region) · ترقی (development) · مجلس (council/assembly)
+
+ENGLISH FALLBACK — LAST RESORT ONLY:
+- Use an English word ONLY for highly technical terms or proper nouns with no standard Urdu equivalent.
+- When using English fallback: use ONLY the single English word; surround it with natural Urdu context.
+- NEVER do phonetic Urdu transliteration of English words (e.g. do NOT write سیزفائر for ceasefire — write جنگ بندی instead; do NOT write پارلیامنٹ — write قومی اسمبلی).
+- English fallback examples: write GDP not جی ڈی پی; write UN Security Council not an invented Urdu.
+- Prefer the correct Urdu word 100% of the time. Only fall back to English if NO Urdu equivalent exists.
 
 URDU SCRIPT ENFORCEMENT — ZERO TOLERANCE:
-- FORBIDDEN in title_ur and body_ur: Chinese/CJK characters (e.g. 规، 漢、字), Devanagari/Hindi
-  script (e.g. देवनागरी، तरीक), Cyrillic, Greek, Bengali, Tamil, Telugu, or ANY Unicode block
-  other than: Arabic/Urdu (U+0600–U+06FF, U+FB50–U+FDFF, U+FE70–U+FEFF), standard Latin
-  a-z A-Z (for English technical terms only), ASCII digits 0-9, and standard punctuation.
-- A SINGLE Chinese or Devanagari character anywhere in title_ur or body_ur is a CRITICAL failure.
-- If you cannot express a concept in proper Urdu script or clear Roman English, OMIT it entirely.
-- Do NOT transliterate: when uncertain, write the English word directly (e.g. write "summit" not a
-  garbled attempt at transliteration that mixes in wrong Unicode blocks).
-- SELF-CHECK before outputting: scan every character in title_ur and body_ur — if you see any
-  character outside Arabic/Urdu Unicode or standard Latin/ASCII, REMOVE it and rephrase.
+- FORBIDDEN in title_ur and body_ur: Chinese/CJK, Devanagari/Hindi, Cyrillic, Greek, Bengali, Tamil,
+  Telugu, or ANY Unicode block other than: Arabic/Urdu (U+0600–U+06FF, U+FB50–U+FDFF, U+FE70–U+FEFF),
+  standard Latin a-z A-Z (for English last-resort fallback ONLY), ASCII digits 0-9, punctuation.
+- A SINGLE Chinese or Devanagari character anywhere is a CRITICAL failure — remove and rephrase.
+- SELF-CHECK before outputting: scan every character — any foreign script = remove and rewrite.
+- The final text must read like a professional Urdu newspaper article, not a translation.
 
 ARABIC RULES:
-- Clear Modern Standard Arabic (فصحى) with newspaper register
+- Clear Modern Standard Arabic (فصحى) with newspaper register. 100-130 words minimum.
 
 OUTPUT FORMAT — CRITICAL:
 Return ONLY a valid, COMPLETE JSON array. No markdown fences, no preamble, no explanation.

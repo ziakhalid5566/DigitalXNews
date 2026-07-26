@@ -63,7 +63,7 @@ async function setupAndroidChannel() {
     name: 'DigitalXNews',
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
-    lightColor: '#1a5c38',
+    lightColor: '#1565C0',
     sound: 'default',
     enableLights: true,
     enableVibrate: true,
@@ -133,10 +133,10 @@ async function requestAndroidNotificationPermission(): Promise<boolean> {
     const result = await PermissionsAndroid.request(
       PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
       {
-        title: 'Notification Permission',
-        message: 'DigitalXNews needs permission to send you breaking news alerts.',
-        buttonPositive: 'Allow',
-        buttonNegative: 'Deny',
+        title: 'اطلاع کی اجازت',
+        message: 'DigitalXNews آپ کو بریکنگ نیوز کی فوری اطلاعات بھیجنا چاہتا ہے۔',
+        buttonPositive: 'اجازت دیں',
+        buttonNegative: 'انکار',
       },
     );
     const granted = result === PermissionsAndroid.RESULTS.GRANTED;

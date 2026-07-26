@@ -20,7 +20,7 @@ const PUSH_TOKEN_KEY = 'pushToken';
 const STRINGS = {
   ur: {
     title: 'ترتیبات',
-    brand: 'اسلام نشرہ',
+    brand: 'DigitalXNews',
     langSec: 'زبان',
     langDesc: 'خبروں کی زبان منتخب کریں',
     notifSec: 'اطلاعات',
@@ -36,7 +36,7 @@ const STRINGS = {
   },
   ar: {
     title: 'الإعدادات',
-    brand: 'إسلام نشرة',
+    brand: 'DigitalXNews',
     langSec: 'اللغة',
     langDesc: 'اختر لغة المحتوى',
     notifSec: 'الإشعارات',
