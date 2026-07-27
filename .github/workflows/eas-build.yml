@@ -148,27 +148,10 @@ jobs:
             --platform android \
             --profile "$PROFILE" \
             --non-interactive \
-            --json \
             2>&1 | tee /tmp/eas-build.log) || BUILD_EXIT=$?
 
-          # Try to extract build URL from JSON output
-          BUILD_URL=$(echo "$BUILD_OUTPUT" | node -e "
-            const lines = require('fs').readFileSync('/dev/stdin','utf8').split('\n');
-            for (const line of lines) {
-              try {
-                const parsed = JSON.parse(line);
-                if (Array.isArray(parsed) && parsed[0]?.buildDetailsPageUrl) {
-                  process.stdout.write(parsed[0].buildDetailsPageUrl);
-                  break;
-                }
-              } catch {}
-            }
-          " 2>/dev/null || true)
-
-          # Fallback: extract URL from plain text log
-          if [ -z "$BUILD_URL" ]; then
-            BUILD_URL=$(grep -oE 'https://expo\.dev/accounts/[^/]+/projects/[^/]+/builds/[a-f0-9-]+' /tmp/eas-build.log | head -1 || true)
-          fi
+          # Try to extract build URL from output
+          BUILD_URL=$(grep -oE 'https://expo\.dev/accounts/[^/]+/projects/[^/]+/builds/[a-f0-9-]+' /tmp/eas-build.log | head -1 || true)
 
           if [ -n "$BUILD_URL" ]; then
             echo "build_url=$BUILD_URL" >> "$GITHUB_OUTPUT"
@@ -204,32 +187,47 @@ jobs:
           echo "=== Build failed. Diagnosing... ==="
           LOG=/tmp/eas-build.log
 
-          # ── Common fixable issues ────────────────────────────────────────────
+          # ── Free-tier build quota exhausted (most common failure) ────────────
+          if grep -qi "free plan\|monthly.*build\|build.*month.*reset\|used.*builds.*free\|android builds.*free" "$LOG" 2>/dev/null; then
+            RESET_DATE=$(grep -oiE 'reset.*[A-Z][a-z]+ [A-Z][a-z]+ [0-9]+ [0-9]+' "$LOG" | head -1 || echo "soon")
+            echo "::error::❌ EAS Free Plan build quota exhausted for this month."
+            echo "::error::   The quota resets automatically at the start of next month ($RESET_DATE)."
+            echo "::error::   Options:"
+            echo "::error::   1. Wait for the quota to reset, then re-run this workflow."
+            echo "::error::   2. Upgrade to EAS Pro at https://expo.dev/accounts/ziaullah102s-team/settings/billing"
+            echo "::error::      (Pro plan: unlimited builds, shorter queue times)"
+          fi
 
-          if grep -qi "EXPO_TOKEN" "$LOG" 2>/dev/null; then
+          # ── EXPO_TOKEN issues ──────────────────────────────────────────────
+          if grep -qi "EXPO_TOKEN\|unauthorized\|not authenticated\|invalid token" "$LOG" 2>/dev/null; then
             echo "::error::EXPO_TOKEN is invalid or expired."
             echo "::error::Regenerate at https://expo.dev/accounts/[account]/settings/access-tokens"
             echo "::error::and update the GitHub secret EXPO_TOKEN."
           fi
 
+          # ── Project / slug not found ───────────────────────────────────────
           if grep -qi "project not found\|invalid project" "$LOG" 2>/dev/null; then
             echo "::error::EAS project not found. Ensure the project ID in app.json matches your expo.dev project."
             echo "::error::Also verify the 'slug' in app.json matches the project slug on expo.dev."
           fi
 
+          # ── Android package conflict ───────────────────────────────────────
           if grep -qi "android.*package.*already" "$LOG" 2>/dev/null; then
             echo "::warning::Android package name conflict. The package 'com.digitalxnews.islamnashra' may already be taken on Google Play."
             echo "::warning::Change android.package in app.json if needed."
           fi
 
+          # ── SDK version mismatch ───────────────────────────────────────────
           if grep -qi "version.*sdk.*mismatch\|sdk version" "$LOG" 2>/dev/null; then
             echo "::error::Expo SDK version mismatch. Run 'npx expo install --check' locally to fix."
           fi
 
+          # ── Out of memory ──────────────────────────────────────────────────
           if grep -qi "out of memory\|OOM" "$LOG" 2>/dev/null; then
             echo "::error::Build ran out of memory on Expo's servers. This is a transient error — re-run the workflow."
           fi
 
+          # ── Network errors ─────────────────────────────────────────────────
           if grep -qi "network error\|ENOTFOUND\|ETIMEDOUT" "$LOG" 2>/dev/null; then
             echo "::error::Network error during build. Re-run the workflow — this is typically transient."
           fi
