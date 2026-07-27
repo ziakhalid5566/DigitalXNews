@@ -1,11 +1,11 @@
 /**
- * Image provider — Google Custom Search Images
+ * Image provider — Pexels Photos API
  *
- * Uses GOOGLE_SEARCH_API_KEY + GOOGLE_SEARCH_ENGINE_ID (already in GitHub secrets).
- * Free quota: 100 queries/day. Sufficient for news generation jobs.
+ * Uses PEXELS_API_KEY (set in environment / GitHub secrets / Supabase secrets).
+ * Free quota: 200 req/hr, 20,000 req/month — ample for news generation.
  *
- * DEDUPLICATION: Tracks last 40 used URLs to avoid repeats in a single run.
- * QUERY STRATEGY: Extracts specific nouns from English headline + category anchor.
+ * DEDUPLICATION: Rolling window of last 40 used URLs to avoid repeats per run.
+ * QUERY STRATEGY: Extracts nouns from English headline + per-category anchor.
  */
 
 import { logger } from "./logger";
@@ -20,9 +20,7 @@ export interface ImageResult {
   attribution: string;
 }
 
-// ---------------------------------------------------------------------------
-// Deduplication — rolling window
-// ---------------------------------------------------------------------------
+// ─── Deduplication ────────────────────────────────────────────────────────────
 const RECENT_MAX = 40;
 const recentlyUsedUrls = new Set<string>();
 const recentlyUsedQueue: string[] = [];
@@ -37,9 +35,7 @@ function markUsed(url: string): void {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Stop words for query extraction
-// ---------------------------------------------------------------------------
+// ─── Stop words ───────────────────────────────────────────────────────────────
 const STOP_WORDS = new Set([
   "the","a","an","in","of","for","by","to","at","is","are","was","were",
   "has","have","had","on","with","from","and","or","but","not","as","its",
@@ -52,21 +48,21 @@ const STOP_WORDS = new Set([
   "global","national","international","annual","monthly","weekly","daily",
 ]);
 
-/** Category-specific visual anchor keywords for better image relevance */
+// ─── Category anchors ─────────────────────────────────────────────────────────
 const CATEGORY_ANCHORS: Record<string, string> = {
   Palestine:          "Palestine mosque Gaza",
   World:              "Islamic architecture mosque",
   "South Asia":       "Pakistan mosque Islamic",
-  Scholars:           "Islamic scholar mosque university",
-  Community:          "Muslim community mosque",
-  Economy:            "Islamic banking finance",
-  Government:         "parliament government building",
-  Security:           "humanitarian relief conflict",
+  Scholars:           "Islamic scholar lecture",
+  Community:          "Muslim community gathering",
+  Economy:            "Islamic banking business",
+  Government:         "parliament government",
+  Security:           "humanitarian conflict",
   Mosques:            "grand mosque mecca medina",
-  Madrassas:          "Islamic school education students",
+  Madrassas:          "Islamic school students",
   Africa:             "Africa mosque Islamic",
   "Southeast Asia":   "Indonesia Malaysia mosque",
-  Turkey:             "Turkey Istanbul mosque",
+  Turkey:             "Istanbul mosque Turkey",
 };
 
 function buildSearchQuery(titleEn: string, category: string): string {
@@ -75,147 +71,117 @@ function buildSearchQuery(titleEn: string, category: string): string {
     .replace(/[^a-z\s]/g, " ")
     .split(/\s+/)
     .filter((w) => w.length > 2 && !STOP_WORDS.has(w));
-
   const keywords = words.slice(0, 4);
   const anchor = CATEGORY_ANCHORS[category] ?? "mosque Islamic";
-  const anchorWords = anchor.toLowerCase().split(" ");
-  const alreadyCovered = anchorWords.every((aw) =>
-    keywords.some((k) => k.startsWith(aw.slice(0, 4))),
-  );
-  if (!alreadyCovered) keywords.push(anchor);
-
+  // Append anchor if its first word isn't already covered
+  const firstAnchorWord = anchor.split(" ")[0].toLowerCase();
+  if (!keywords.some((k) => k.startsWith(firstAnchorWord.slice(0, 4)))) {
+    keywords.push(anchor);
+  }
   return keywords.join(" ");
 }
 
-// ---------------------------------------------------------------------------
-// Google Custom Search fetch helpers
-// ---------------------------------------------------------------------------
-interface GoogleImageItem {
-  link: string;
-  title: string;
-  displayLink: string;
-  image?: {
-    thumbnailLink?: string;
-    contextLink?: string;
+// ─── Pexels API types ─────────────────────────────────────────────────────────
+interface PexelsPhoto {
+  id: number;
+  url: string;
+  photographer: string;
+  src: {
+    original: string;
+    large2x: string;
+    large: string;
+    medium: string;
   };
 }
 
-interface GoogleSearchResponse {
-  items?: GoogleImageItem[];
-  error?: { code: number; message: string };
+interface PexelsSearchResponse {
+  photos?: PexelsPhoto[];
+  error?: string;
 }
 
-async function searchGoogleImages(
+async function searchPexels(
   apiKey: string,
-  searchEngineId: string,
   query: string,
-  num = 10,
-): Promise<GoogleSearchResponse | null> {
-  const safeNum = Math.min(num, 10); // Google max is 10 per request
+  perPage = 10,
+): Promise<PexelsPhoto[]> {
   const url =
-    `https://www.googleapis.com/customsearch/v1` +
-    `?key=${encodeURIComponent(apiKey)}` +
-    `&cx=${encodeURIComponent(searchEngineId)}` +
-    `&q=${encodeURIComponent(query)}` +
-    `&searchType=image` +
-    `&num=${safeNum}` +
-    `&imgSize=large` +
-    `&imgType=photo` +
-    `&safe=active`;
-
+    `https://api.pexels.com/v1/search` +
+    `?query=${encodeURIComponent(query)}` +
+    `&per_page=${perPage}` +
+    `&orientation=landscape`;
   try {
-    const res = await fetch(url);
-    const json = (await res.json()) as GoogleSearchResponse;
-    if (!res.ok || json.error) {
-      logger.error(
-        { status: res.status, error: json.error, query },
-        "imageProvider: Google Search request failed",
-      );
-      return null;
+    const res = await fetch(url, { headers: { Authorization: apiKey } });
+    if (!res.ok) {
+      logger.error({ status: res.status, query }, "imageProvider: Pexels request failed");
+      return [];
     }
-    return json;
+    const json = (await res.json()) as PexelsSearchResponse;
+    if (json.error) {
+      logger.error({ error: json.error, query }, "imageProvider: Pexels API error");
+      return [];
+    }
+    return json.photos ?? [];
   } catch (err) {
-    logger.error({ err, query }, "imageProvider: unexpected error from Google Search");
-    return null;
+    logger.error({ err, query }, "imageProvider: unexpected Pexels error");
+    return [];
   }
 }
 
-/** Pick the first image URL not recently used and ensure it's a valid https image */
-function pickFreshImage(items: GoogleImageItem[]): GoogleImageItem | null {
-  for (const item of items) {
-    const url = item.link;
+function pickFreshPhoto(photos: PexelsPhoto[]): PexelsPhoto | null {
+  for (const photo of photos) {
+    const url = photo.src.large2x || photo.src.large || photo.src.medium;
     if (!url) continue;
-    if (!url.startsWith("https://")) continue;
-    // Skip SVGs and tiny images, prefer jpg/png/webp
-    if (url.includes(".svg")) continue;
     if (recentlyUsedUrls.has(url)) continue;
-    return item;
+    return photo;
   }
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-/**
- * Fetch a relevant, deduplicated image for a news article via Google Custom Search.
- * Returns null if API keys are not set or no suitable image is found.
- */
+// ─── Public API ───────────────────────────────────────────────────────────────
 export async function fetchImage(
   article: ImageArticleContext,
 ): Promise<ImageResult | null> {
-  const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
-  const searchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
+  const apiKey = process.env.PEXELS_API_KEY;
 
-  if (!apiKey || !searchEngineId) {
-    logger.warn(
-      "imageProvider: GOOGLE_SEARCH_API_KEY or GOOGLE_SEARCH_ENGINE_ID not set — image fetching disabled",
-    );
+  if (!apiKey) {
+    logger.warn("imageProvider: PEXELS_API_KEY not set — image fetching disabled");
     return null;
   }
 
   const query = buildSearchQuery(article.titleEn, article.category);
-  logger.debug({ query, title: article.titleEn }, "imageProvider: built search query");
+  logger.debug({ query, title: article.titleEn }, "imageProvider: built Pexels query");
 
-  // --- Primary query: headline keywords + category anchor ---
-  const primary = await searchGoogleImages(apiKey, searchEngineId, query, 10);
-  if (primary?.items?.length) {
-    const pick = pickFreshImage(primary.items);
-    if (pick) {
-      markUsed(pick.link);
-      logger.debug({ url: pick.link, query }, "imageProvider: primary image found");
-      return {
-        url: pick.link,
-        attribution: `Image: ${pick.displayLink}`,
-      };
-    }
-    logger.debug({ query }, "imageProvider: all primary results used, trying broader query");
+  // Primary: headline keywords + category anchor
+  const primary = await searchPexels(apiKey, query, 10);
+  const pick1 = pickFreshPhoto(primary);
+  if (pick1) {
+    const url = pick1.src.large2x || pick1.src.large || pick1.src.medium;
+    markUsed(url);
+    logger.debug({ url, query }, "imageProvider: primary photo found");
+    return { url, attribution: `Photo by ${pick1.photographer} on Pexels` };
   }
 
-  // --- Broader fallback: just category anchor ---
-  const fallbackQuery = CATEGORY_ANCHORS[article.category] ?? "mosque Islamic architecture";
-  if (fallbackQuery !== query) {
-    const fallback = await searchGoogleImages(apiKey, searchEngineId, fallbackQuery, 10);
-    if (fallback?.items?.length) {
-      const pick = pickFreshImage(fallback.items);
-      if (pick) {
-        markUsed(pick.link);
-        return { url: pick.link, attribution: `Image: ${pick.displayLink}` };
-      }
+  // Fallback: category anchor only
+  const anchor = CATEGORY_ANCHORS[article.category] ?? "mosque Islamic architecture";
+  if (anchor !== query) {
+    const fallback = await searchPexels(apiKey, anchor, 10);
+    const pick2 = pickFreshPhoto(fallback);
+    if (pick2) {
+      const url = pick2.src.large2x || pick2.src.large || pick2.src.medium;
+      markUsed(url);
+      return { url, attribution: `Photo by ${pick2.photographer} on Pexels` };
     }
   }
 
-  // --- Last resort: generic Islamic architecture ---
-  const generic = await searchGoogleImages(apiKey, searchEngineId, "mosque Islamic architecture beautiful", 10);
-  if (generic?.items?.length) {
-    const pick = pickFreshImage(generic.items);
-    if (pick) {
-      markUsed(pick.link);
-      return { url: pick.link, attribution: `Image: ${pick.displayLink}` };
-    }
+  // Last resort: generic
+  const generic = await searchPexels(apiKey, "mosque Islamic architecture beautiful", 10);
+  const pick3 = pickFreshPhoto(generic);
+  if (pick3) {
+    const url = pick3.src.large2x || pick3.src.large || pick3.src.medium;
+    markUsed(url);
+    return { url, attribution: `Photo by ${pick3.photographer} on Pexels` };
   }
 
-  logger.warn({ title: article.titleEn }, "imageProvider: exhausted all query tiers, returning null");
+  logger.warn({ title: article.titleEn }, "imageProvider: all queries exhausted, returning null");
   return null;
 }
