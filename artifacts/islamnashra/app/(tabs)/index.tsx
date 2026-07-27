@@ -56,70 +56,30 @@ function getCatLabel(cat: typeof CATEGORIES[0], lang: Language) {
   return cat.labelEn ?? cat.key;
 }
 
-// ─── App Logo ─────────────────────────────────────────────────────────────────
+// ─── App Logo (ODX-style) ─────────────────────────────────────────────────────
 function DXLogo() {
   return (
-    <View style={logo.outerWrap}>
-      {/* Icon badge */}
-      <View style={logo.iconBadge}>
-        <Text style={logo.iconSymbol}>ⓓ</Text>
-        <Text style={logo.iconX}>X</Text>
-      </View>
-      {/* Text block */}
-      <View style={logo.textBlock}>
-        <Text style={logo.appName}>DigitalX</Text>
-        <Text style={logo.tagline}>NEWS</Text>
-      </View>
+    <View style={logo.wrap}>
+      <Text style={logo.circle}>ⓓ</Text>
+      <Text style={logo.dx}>DX</Text>
     </View>
   );
 }
 const logo = StyleSheet.create({
-  outerWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  iconBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  iconSymbol: {
-    fontSize: 15,
+  wrap: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  circle: {
+    fontSize: 26,
     color: '#FFFFFF',
     fontWeight: '900',
-    letterSpacing: -1,
-    marginRight: -1,
+    lineHeight: 30,
+    letterSpacing: -0.5,
   },
-  iconX: {
-    fontSize: 15,
-    color: '#4FC3F7',
-    fontWeight: '900',
-    letterSpacing: -1,
-  },
-  textBlock: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-  },
-  appName: {
-    fontSize: 16,
+  dx: {
+    fontSize: 22,
     color: '#FFFFFF',
     fontFamily: 'Inter_700Bold',
-    letterSpacing: -0.3,
-    lineHeight: 18,
-  },
-  tagline: {
-    fontSize: 9,
-    color: 'rgba(255,255,255,0.65)',
-    fontFamily: 'Inter_600SemiBold',
-    letterSpacing: 2.5,
-    lineHeight: 11,
+    letterSpacing: 1.5,
+    lineHeight: 30,
   },
 });
 
