@@ -98,43 +98,9 @@ jobs:
       - name: Set up google-services.json
         working-directory: artifacts/islamnashra
         run: |
-          if [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
-            echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > google-services.json
-            echo "✅ Loaded google-services.json from secret"
-          else
-            cat > google-services.json <<'EOF'
-          {
-            "project_info": {
-              "project_number": "000000000000",
-              "project_id": "digitalxnews-placeholder",
-              "storage_bucket": "digitalxnews-placeholder.appspot.com"
-            },
-            "client": [
-              {
-                "client_info": {
-                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
-                  "android_client_info": { "package_name": "com.digitalxnews.islamnashra" }
-                },
-                "oauth_client": [],
-                "api_key": [{"current_key": "placeholder"}],
-                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
-              }
-            ],
-            "configuration_version": "1"
-          }
-          EOF
-            echo "⚠️ Using placeholder google-services.json (FCM push needs real file)"
-          fi
-
-      # ── Expo Prebuild ────────────────────────────────────────────────────────
-      - name: Run expo prebuild (Android)
-        working-directory: artifacts/islamnashra
-        run: |
-          # Expo SDK 54 throws when CI=1 and it needs to ask "Install updated dependencies?"
-          # Fix: unset CI so expo shows the prompt, then pipe "y" to accept it via stdin.
-          # This is safe for prebuild — it doesn't trigger any browser auth or interactive flows.
-          unset CI
-          printf "y\n" | npx expo prebuild \
+          # expo/react/react-native are now in dependencies (not devDependencies).
+          # Prebuild won't detect package.json changes, so no interactive prompt occurs.
+          npx expo prebuild \
             --platform android \
             --clean
         env:
