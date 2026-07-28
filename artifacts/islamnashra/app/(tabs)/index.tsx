@@ -1,4 +1,7 @@
-import { useState, useCallback, useRef } from 'react';
+// Item 1: Removed "Top Stories" numbered section
+// Item 2: Removed non-functional hamburger menu; simplified header
+// Item 8: Removed AI branding from empty state
+import { useState, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -7,11 +10,11 @@ import {
   RefreshControl,
   ScrollView,
   Pressable,
-  TextInput,
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { Link, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,6 +26,7 @@ import { SkeletonCard } from '@/components/SkeletonCard';
 import type { Post } from '@/lib/types';
 import { useLanguage, type Language, getLocalizedContent } from '@/contexts/LanguageContext';
 import { useNotifications } from '@/contexts/NotificationsContext';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // ─── Category config ──────────────────────────────────────────────────────────
 const CATEGORIES = [
@@ -56,129 +60,22 @@ function getCatLabel(cat: typeof CATEGORIES[0], lang: Language) {
   return cat.labelEn ?? cat.key;
 }
 
-// ─── App Logo (ODX-style) ─────────────────────────────────────────────────────
-function DXLogo() {
+// ─── App Name Header (clean, no broken icons) ─────────────────────────────────
+function AppNameLogo() {
   return (
     <View style={logo.wrap}>
-      <Text style={logo.circle}>ⓓ</Text>
-      <Text style={logo.dx}>DX</Text>
+      <Text style={logo.name}>اسلام نشرہ</Text>
     </View>
   );
 }
 const logo = StyleSheet.create({
-  wrap: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  circle: {
-    fontSize: 26,
-    color: '#FFFFFF',
-    fontWeight: '900',
-    lineHeight: 30,
-    letterSpacing: -0.5,
-  },
-  dx: {
-    fontSize: 22,
+  wrap: { flexDirection: 'row', alignItems: 'center' },
+  name: {
+    fontSize: 20,
     color: '#FFFFFF',
     fontFamily: 'Inter_700Bold',
-    letterSpacing: 1.5,
-    lineHeight: 30,
+    letterSpacing: 0.5,
   },
-});
-
-// ─── Compact Top Story Row ────────────────────────────────────────────────────
-function TopStoryRow({ post, rank, language }: { post: Post; rank: number; language: Language }) {
-  const colors = useColors();
-  const { title } = getLocalizedContent(post, language);
-  const isRTL = language === 'ur' || language === 'ar';
-  const catColor = CATEGORY_COLORS[post.category] ?? '#1565C0';
-
-  return (
-    <Link href={`/post/${post.id}`} asChild>
-      <Pressable
-        onPressIn={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-        style={({ pressed }) => [
-          ts.row,
-          { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.85 : 1 },
-        ]}
-      >
-        {/* Rank */}
-        <View style={[ts.rankBadge, { borderColor: colors.primary }]}>
-          <Text style={[ts.rankTxt, { color: colors.primary }]}>
-            {String(rank).padStart(2, '0')}
-          </Text>
-        </View>
-
-        {/* Text */}
-        <View style={ts.middle}>
-          <View style={[ts.catPill, { backgroundColor: catColor + '20' }]}>
-            <Text style={[ts.catTxt, { color: catColor }]}>{post.category}</Text>
-          </View>
-          <Text
-            style={[ts.title, { color: colors.cardForeground }, isRTL && ts.rtl]}
-            numberOfLines={2}
-          >
-            {title}
-          </Text>
-          <View style={[ts.meta, isRTL && ts.rowRev]}>
-            <Ionicons name="time-outline" size={11} color={colors.mutedForeground} />
-            <Text style={[ts.metaTxt, { color: colors.mutedForeground }]}>{timeAgo(post.publishedAt)}</Text>
-            <Ionicons name="eye-outline" size={11} color={colors.mutedForeground} />
-            <Text style={[ts.metaTxt, { color: colors.mutedForeground }]}>{formatCount(post.viewsCount ?? 0)}</Text>
-          </View>
-        </View>
-
-        {/* Thumbnail */}
-        {post.hasImage && post.imageUrl ? (
-          <Image
-            source={{ uri: post.imageUrl }}
-            style={ts.thumb}
-            contentFit="cover"
-            cachePolicy="memory-disk"
-          />
-        ) : (
-          <View style={[ts.thumb, { backgroundColor: catColor + '30', alignItems: 'center', justifyContent: 'center' }]}>
-            <Text style={{ fontSize: 22 }}>📰</Text>
-          </View>
-        )}
-      </Pressable>
-    </Link>
-  );
-}
-
-const ts = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginHorizontal: 14,
-    marginBottom: 10,
-  },
-  rankBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  rankTxt: { fontSize: 14, fontFamily: 'Inter_700Bold' },
-  middle: { flex: 1, gap: 4 },
-  catPill: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 100,
-  },
-  catTxt: { fontSize: 10, fontFamily: 'Inter_700Bold' },
-  title: { fontSize: 14, fontFamily: 'Inter_600SemiBold', lineHeight: 20 },
-  meta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  metaTxt: { fontSize: 11, fontFamily: 'Inter_400Regular' },
-  thumb: { width: 72, height: 72, borderRadius: 10, flexShrink: 0 },
-  rtl: { textAlign: 'right', writingDirection: 'rtl' },
-  rowRev: { flexDirection: 'row-reverse' },
 });
 
 // ─── Breaking Featured Card ───────────────────────────────────────────────────
@@ -196,7 +93,6 @@ function BreakingCard({ post, language }: { post: Post; language: Language }) {
           { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.9 : 1 },
         ]}
       >
-        {/* Image */}
         <View style={bc.imgWrap}>
           {post.hasImage && post.imageUrl ? (
             <Image
@@ -212,14 +108,11 @@ function BreakingCard({ post, language }: { post: Post; language: Language }) {
             colors={['rgba(0,0,0,0.0)', 'rgba(0,0,0,0.75)']}
             style={StyleSheet.absoluteFillObject}
           />
-          {/* LIVE badge */}
           <View style={bc.liveBadge}>
             <View style={bc.liveDot} />
             <Text style={bc.liveTxt}>LIVE</Text>
           </View>
         </View>
-
-        {/* Content */}
         <View style={bc.content}>
           <Text
             style={[bc.title, { color: colors.cardForeground }, isRTL && bc.rtl]}
@@ -233,7 +126,6 @@ function BreakingCard({ post, language }: { post: Post; language: Language }) {
             <Ionicons name="eye-outline" size={12} color={colors.mutedForeground} />
             <Text style={[bc.metaTxt, { color: colors.mutedForeground }]}>{formatCount(post.viewsCount ?? 0)}</Text>
             <View style={bc.spacer} />
-            <Pressable hitSlop={8}><Feather name="bookmark" size={16} color={colors.mutedForeground} /></Pressable>
             <Pressable hitSlop={8}><Feather name="share-2" size={16} color={colors.mutedForeground} /></Pressable>
           </View>
         </View>
@@ -266,8 +158,6 @@ export default function FeedScreen() {
   const { unreadCount } = useNotifications();
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const searchRef = useRef<TextInput>(null);
   const isRTL = language === 'ur' || language === 'ar';
 
   const { data, isLoading, refetch, isError } = useListPosts(
@@ -284,15 +174,8 @@ export default function FeedScreen() {
   const allPosts = data?.posts ?? [];
   const breakingPosts = allPosts.filter((p) => p.isBreaking);
   const featuredBreaking = breakingPosts[0];
-  // Top stories: non-breaking, sorted by views
-  const topStories = allPosts
-    .filter((p) => !p.isBreaking)
-    .sort((a, b) => (b.viewsCount ?? 0) - (a.viewsCount ?? 0))
-    .slice(0, 6);
-  // Regular feed: remaining posts
-  const regularPosts = allPosts.filter(
-    (p) => p !== featuredBreaking && !topStories.includes(p)
-  );
+  // Item 1: Only show full-size news cards (no top stories section)
+  const regularPosts = allPosts.filter((p) => p !== featuredBreaking);
 
   const searchPlaceholder = language === 'ur'
     ? 'خبریں تلاش کریں...'
@@ -300,19 +183,9 @@ export default function FeedScreen() {
     ? 'ابحث عن الأخبار...'
     : 'Search news...';
 
-  const handleSearchSubmit = useCallback(() => {
-    if (searchQuery.trim()) {
-      router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
-    }
-  }, [searchQuery, router]);
-
-  // ── Rendered list: header + breaking + top stories + regular cards ──────────
-  const listData: { type: string; post?: Post; rank?: number; id: string }[] = [
+  const listData: { type: string; post?: Post; id: string }[] = [
     ...(featuredBreaking
       ? [{ type: 'breakingHeader', id: 'bh' }, { type: 'breakingCard', post: featuredBreaking, id: 'bc' }]
-      : []),
-    ...(topStories.length > 0
-      ? [{ type: 'topHeader', id: 'th' }, ...topStories.map((p, i) => ({ type: 'topRow', post: p, rank: i + 1, id: `tr-${p.id}` }))]
       : []),
     ...(regularPosts.length > 0
       ? [{ type: 'allHeader', id: 'ah' }, ...regularPosts.map((p) => ({ type: 'card', post: p, id: `c-${p.id}` }))]
@@ -342,26 +215,6 @@ export default function FeedScreen() {
     }
     if (item.type === 'breakingCard' && item.post) {
       return <BreakingCard post={item.post} language={language} />;
-    }
-    if (item.type === 'topHeader') {
-      return (
-        <View style={[feed.sectionHeader, feed.rowBetween]}>
-          <View style={feed.rowGap}>
-            <Text style={[feed.sectionTitle, { color: colors.foreground }]}>
-              {language === 'ur' ? 'تاپ اسٹوریز' : language === 'ar' ? 'أبرز القصص' : 'Top Stories'}
-            </Text>
-            <Text style={{ fontSize: 18 }}>🔥</Text>
-          </View>
-          <Pressable>
-            <Text style={[feed.moreTxt, { color: colors.primary }]}>
-              {language === 'ur' ? 'مزید دیکھیں' : language === 'ar' ? 'المزيد' : 'See more'}
-            </Text>
-          </Pressable>
-        </View>
-      );
-    }
-    if (item.type === 'topRow' && item.post) {
-      return <TopStoryRow post={item.post} rank={item.rank!} language={language} />;
     }
     if (item.type === 'allHeader') {
       return (
@@ -397,21 +250,21 @@ export default function FeedScreen() {
     return (
       <View style={feed.emptyBox}>
         <Text style={{ fontSize: 48 }}>🕌</Text>
+        {/* Item 8: Removed AI branding — clean neutral message */}
         <Text style={[feed.emptyTitle, { color: colors.mutedForeground }]}>خبریں تیار ہو رہی ہیں…</Text>
-        <Text style={[feed.emptySub, { color: colors.mutedForeground }]}>AI ایجنٹس عالمی اسلامی خبریں جمع کر رہے ہیں</Text>
+        <Text style={[feed.emptySub, { color: colors.mutedForeground }]}>تازہ اسلامی خبریں جلد آئیں گی</Text>
       </View>
     );
   };
 
   return (
     <View style={[feed.root, { backgroundColor: colors.background }]}>
-      {/* ── Top Header Bar ── */}
+      {/* ── Header Bar — Item 2: Removed hamburger menu ── */}
       <View style={[feed.headerBar, { paddingTop: insets.top + 8, backgroundColor: colors.headerGradientStart }]}>
         <View style={feed.headerRow}>
-          <Pressable hitSlop={12} style={feed.headerBtn}>
-            <Feather name="menu" size={22} color="#fff" />
-          </Pressable>
-          <DXLogo />
+          {/* Item 2: Just the app name — clean and centered-left */}
+          <AppNameLogo />
+          {/* Bell button works — keep it */}
           <Pressable hitSlop={12} style={feed.headerBtn} onPress={() => router.push('/(tabs)/notifications')}>
             <Feather name="bell" size={22} color="#fff" />
             {unreadCount > 0 && (
@@ -431,7 +284,6 @@ export default function FeedScreen() {
           <Text style={[feed.searchPlaceholder, isRTL && feed.rtl]} numberOfLines={1}>
             {searchPlaceholder}
           </Text>
-          <Feather name="sliders" size={16} color="rgba(255,255,255,0.5)" />
         </Pressable>
       </View>
 
@@ -528,7 +380,6 @@ const feed = StyleSheet.create({
   livePill: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#C0392B', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
   liveDotSm: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#fff' },
   livePillTxt: { fontSize: 11, fontFamily: 'Inter_700Bold', color: '#fff', letterSpacing: 0.5 },
-  moreTxt: { fontSize: 13, fontFamily: 'Inter_600SemiBold' },
 
   /* Empty */
   list: { paddingTop: 4 },

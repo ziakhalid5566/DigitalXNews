@@ -1,16 +1,25 @@
 /**
  * usePushNotifications
  *
- * Requests notification permissions, obtains an Expo push token, persists it
- * in AsyncStorage, and registers it with the Supabase backend so the server
- * can deliver push notifications to this device.
+ * Item 3: Fixed push token error — "Please set a valid API key. A Firebase
+ * API key is required to communicate with Firebase server APIs."
  *
- * Requirements for push delivery in a standalone APK:
- *   1. Physical device — simulators cannot receive push.
- *   2. `extra.eas.projectId` in app.json (create a free project at expo.dev).
- *   3. For Android: Google FCM credentials configured in EAS (google-services.json).
- *   4. EXPO_PUBLIC_EAS_PROJECT_ID env var OR extra.eas.projectId takes effect at
- *      build time — make sure it is set before running `eas build`.
+ * Root cause: The app is built with a placeholder google-services.json that
+ * has no real Firebase API key. Expo's push service needs FCM to obtain a
+ * push token on Android.
+ *
+ * Fix: The GitHub Actions workflow (android-build.yml) reads the real
+ * google-services.json from the GOOGLE_SERVICES_JSON GitHub secret.
+ * This hook handles errors gracefully and never crashes the app when
+ * running without a real FCM key (e.g. in dev/emulator builds).
+ *
+ * To fix push notifications in production:
+ *   1. Create a Firebase project at https://console.firebase.google.com
+ *   2. Add Android app with package: com.digitalxnews.islamnashra
+ *   3. Download google-services.json
+ *   4. In GitHub repo → Settings → Secrets → add GOOGLE_SERVICES_JSON
+ *      (paste the entire JSON content as the secret value)
+ *   5. Re-run the Android build workflow
  */
 
 import { useEffect } from 'react';
@@ -24,8 +33,6 @@ import { Platform, PermissionsAndroid } from 'react-native';
 export const PUSH_TOKEN_KEY = 'pushToken';
 export const DEVICE_ID_KEY = 'deviceId';
 
-// We create a thin supabase client here just for the push-token upsert.
-// It uses the same anon key the rest of the app uses.
 const supabaseUrl =
   process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? '';
 const supabaseAnonKey =
@@ -41,9 +48,6 @@ function getSupabase() {
   return _supabase;
 }
 
-/**
- * Get or generate a stable device ID stored in AsyncStorage.
- */
 export async function getOrCreateDeviceId(): Promise<string> {
   let id = await AsyncStorage.getItem(DEVICE_ID_KEY);
   if (!id) {
@@ -53,14 +57,10 @@ export async function getOrCreateDeviceId(): Promise<string> {
   return id;
 }
 
-/**
- * Set up the Android notification channel. Must be called before any
- * notification is displayed on Android.
- */
 async function setupAndroidChannel() {
   if (Platform.OS !== 'android') return;
   await Notifications.setNotificationChannelAsync('default', {
-    name: 'DigitalXNews',
+    name: 'Islam Nashra',
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
     lightColor: '#1565C0',
@@ -71,138 +71,94 @@ async function setupAndroidChannel() {
   });
 }
 
-/**
- * Register push token with Supabase user_preferences so the backend can
- * send push notifications to this device.
- */
 async function registerTokenWithBackend(deviceId: string, token: string): Promise<void> {
   const sb = getSupabase();
-  if (!sb) {
-    console.warn('[PushNotifications] Supabase not configured — skipping backend registration');
-    return;
-  }
+  if (!sb) return;
   try {
     const { error } = await sb
       .from('user_preferences')
       .upsert(
-        {
-          device_id: deviceId,
-          push_token: token,
-          notifications_enabled: true,
-        },
+        { device_id: deviceId, push_token: token, notifications_enabled: true },
         { onConflict: 'device_id' },
       );
     if (error) {
       console.error('[PushNotifications] Backend registration error:', error.message);
-    } else {
-      console.log('[PushNotifications] Token registered with backend for device:', deviceId);
     }
   } catch (err) {
     console.error('[PushNotifications] Backend registration failed:', err);
   }
 }
 
-/**
- * Result type returned by registerForPushNotificationsAsync.
- * On success, token is set. On failure, token is null and error describes why.
- */
 export interface PushRegistrationResult {
   token: string | null;
-  /** Human-readable reason for failure, or null on success. */
   error: string | null;
 }
 
-/**
- * Request Android 13+ (API 33) POST_NOTIFICATIONS runtime permission explicitly.
- * expo-notifications' requestPermissionsAsync handles this on most devices, but
- * calling PermissionsAndroid.request first ensures the system dialog appears on
- * devices running Android 13+ where the permission might otherwise be silently
- * denied without a dialog.
- */
 async function requestAndroidNotificationPermission(): Promise<boolean> {
   if (Platform.OS !== 'android') return true;
-
-  // Android 13+ (API level 33) requires POST_NOTIFICATIONS runtime permission.
-  // On older Android versions this permission doesn't exist, so we check first.
-  if (Platform.Version < 33) {
-    // Notifications don't need a runtime permission below Android 13.
-    return true;
-  }
-
+  if (Platform.Version < 33) return true;
   try {
     const result = await PermissionsAndroid.request(
       PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS,
       {
-        title: 'اطلاع کی اجازت',
-        message: 'DigitalXNews آپ کو بریکنگ نیوز کی فوری اطلاعات بھیجنا چاہتا ہے۔',
+        title: 'اطلاعات کی اجازت',
+        message: 'اسلام نشرہ آپ کو بریکنگ نیوز کی فوری اطلاعات بھیجنا چاہتا ہے۔',
         buttonPositive: 'اجازت دیں',
         buttonNegative: 'انکار',
       },
     );
-    const granted = result === PermissionsAndroid.RESULTS.GRANTED;
-    if (!granted) {
-      console.warn('[PushNotifications] Android POST_NOTIFICATIONS permission denied by user');
-    }
-    return granted;
-  } catch (err) {
-    console.warn('[PushNotifications] Error requesting Android permission:', err);
-    // Fall through to expo-notifications permission request even if this fails.
-    return true;
+    return result === PermissionsAndroid.RESULTS.GRANTED;
+  } catch {
+    return true; // Fall through to expo-notifications check
   }
 }
 
 /**
- * Returns an Expo push token for the device, or an error message explaining
- * why registration failed.  Never throws — all errors are returned in the
- * `error` field so callers can surface the actual reason to the user.
+ * Item 3: Returns an Expo push token for the device, or a human-readable
+ * error explaining why it failed. Never throws — errors surface in `error`.
+ *
+ * Common failure: "Firebase API key is required" — this means the APK was
+ * built with a placeholder google-services.json. See file header for fix.
  */
 export async function registerForPushNotificationsAsync(): Promise<PushRegistrationResult> {
   if (!Device.isDevice) {
-    const error = 'Push notifications require a physical device. Simulators and emulators cannot receive push notifications.';
-    console.warn('[PushNotifications]', error);
-    return { token: null, error };
+    return {
+      token: null,
+      error: 'Push notifications require a physical device.',
+    };
   }
 
-  // Set up Android channel first
   await setupAndroidChannel();
 
-  // Step 1: Request Android 13+ runtime permission (PermissionsAndroid).
-  // This shows the system dialog before we call expo-notifications' permission API.
+  // Request Android 13+ runtime permission first
   const androidGranted = await requestAndroidNotificationPermission();
   if (!androidGranted) {
-    const error = 'Notification permission was denied. Please enable it in your device Settings → Apps → DigitalXNews → Notifications.';
-    return { token: null, error };
+    return {
+      token: null,
+      error: 'Notification permission denied. Enable in Settings → Apps → اسلام نشرہ → Notifications.',
+    };
   }
 
-  // Step 2: Check / request permissions via expo-notifications API.
-  // This handles iOS and also acts as the canonical check on Android.
+  // Check / request via expo-notifications (handles iOS too)
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
 
   if (existingStatus !== 'granted') {
     const { status } = await Notifications.requestPermissionsAsync({
       android: {},
-      ios: {
-        allowAlert: true,
-        allowBadge: true,
-        allowSound: true,
-      },
+      ios: { allowAlert: true, allowBadge: true, allowSound: true },
     });
     finalStatus = status;
   }
 
   if (finalStatus !== 'granted') {
-    const error =
-      `Notification permission status: "${finalStatus}". ` +
-      'Please enable notifications in your device Settings → Apps → DigitalXNews → Notifications.';
-    console.warn('[PushNotifications]', error);
-    return { token: null, error };
+    return {
+      token: null,
+      error: 'Notification permission not granted. Please enable in device settings.',
+    };
   }
 
-  // Step 3: Resolve EAS project ID — checked in order of precedence:
-  //   1. EXPO_PUBLIC_EAS_PROJECT_ID env var (set at build time in eas.json env block)
-  //   2. extra.eas.projectId in app.json
-  //   3. Constants.easConfig.projectId (auto-injected by EAS)
+  // Resolve EAS project ID
   const projectId: string | undefined =
     process.env.EXPO_PUBLIC_EAS_PROJECT_ID ??
     (Constants.expoConfig?.extra as Record<string, unknown> | undefined)?.eas
@@ -210,39 +166,42 @@ export async function registerForPushNotificationsAsync(): Promise<PushRegistrat
     Constants.easConfig?.projectId;
 
   if (!projectId) {
-    const error =
-      'No EAS project ID found. ' +
-      'Add extra.eas.projectId in app.json or set EXPO_PUBLIC_EAS_PROJECT_ID. ' +
-      'Create a free project at https://expo.dev to get one.';
-    console.warn('[PushNotifications]', error);
-    return { token: null, error };
+    return {
+      token: null,
+      error:
+        'No EAS project ID found. Add extra.eas.projectId in app.json. ' +
+        'Create a free project at https://expo.dev',
+    };
   }
 
-  // Step 4: Get the Expo push token.
+  // Get the Expo push token — may fail if google-services.json is a placeholder
   try {
     const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-    console.log('[PushNotifications] Got push token:', tokenData.data);
     return { token: tokenData.data, error: null };
   } catch (err) {
-    // Capture the full error message to surface it to the user.
     const rawMessage =
-      err instanceof Error
-        ? err.message
-        : typeof err === 'string'
-          ? err
-          : JSON.stringify(err);
-    const error = `Failed to get push token: ${rawMessage}`;
-    console.error('[PushNotifications]', error);
-    return { token: null, error };
+      err instanceof Error ? err.message : typeof err === 'string' ? err : JSON.stringify(err);
+
+    // Item 3: Helpful message for the Firebase API key error
+    let friendlyMessage = `Failed to get push token: ${rawMessage}`;
+    if (rawMessage.includes('Firebase') || rawMessage.includes('API key')) {
+      friendlyMessage =
+        'Push notifications require a valid Firebase configuration. ' +
+        'Please add the GOOGLE_SERVICES_JSON secret to your GitHub repository and rebuild the APK. ' +
+        'See the android-build.yml workflow for setup instructions.';
+    }
+
+    console.error('[PushNotifications]', friendlyMessage);
+    return { token: null, error: friendlyMessage };
   }
 }
 
 /**
- * Hook that runs on app startup to:
- *  1. Set up the Android notification channel.
- *  2. Register for push notifications on physical devices.
- *  3. Persist the token in AsyncStorage.
- *  4. Register the token with the Supabase backend (upserts user_preferences).
+ * Hook that runs on app startup:
+ * 1. Sets up the Android notification channel.
+ * 2. Registers for push notifications on physical devices.
+ * 3. Persists the token in AsyncStorage.
+ * 4. Registers the token with the Supabase backend.
  */
 export function usePushNotifications(): void {
   useEffect(() => {
@@ -250,16 +209,13 @@ export function usePushNotifications(): void {
 
     const run = async () => {
       try {
-        // Always set up Android channel, even if already registered
         await setupAndroidChannel();
 
-        // Check if we already have a registered token
         const cachedToken = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
         const deviceId = await getOrCreateDeviceId();
 
         if (cachedToken) {
-          // Re-register with backend on every startup to ensure the token is
-          // current — Expo tokens can change after OS reinstalls or app updates.
+          // Re-register with backend on every startup — tokens can change
           await registerTokenWithBackend(deviceId, cachedToken);
           return;
         }
@@ -268,19 +224,14 @@ export function usePushNotifications(): void {
         if (cancelled || !result.token) return;
 
         await AsyncStorage.setItem(PUSH_TOKEN_KEY, result.token);
-        console.log('[PushNotifications] Token saved to AsyncStorage:', result.token);
-
-        // Register with Supabase so the server can send pushes to this device
         await registerTokenWithBackend(deviceId, result.token);
       } catch (err) {
+        // Non-critical — app works fine without push notifications
         console.error('[PushNotifications] Startup registration error:', err);
       }
     };
 
     run();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { cancelled = true; };
   }, []);
 }

@@ -1,3 +1,13 @@
+/**
+ * Search Screen — Item 12: Improved structure for easy extensibility.
+ * Clear separation of:
+ *  - SearchHeader (input + controls)
+ *  - FilterBar (category strip — easily extend with date range, source, etc.)
+ *  - SearchResults (server-side results)
+ *  - BrowseView (breaking + trending, shown when no query)
+ *
+ * To add new filters later: add to FilterState type and extend FilterBar.
+ */
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import {
   View,
@@ -19,12 +29,22 @@ import { SkeletonCard } from '@/components/SkeletonCard';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getLocalizedContent } from '@/contexts/LanguageContext';
 import { timeAgo, formatCount } from '@/components/NewsCard';
-import { Link } from 'expo-router';
+import { Link, useLocalSearchParams } from 'expo-router';
 import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import type { Post } from '@/lib/types';
 
-// ─── Categories with emoji ────────────────────────────────────────────────────
+// ─── Filter state type (extend here to add more filters) ──────────────────────
+export interface FilterState {
+  category: string;
+  // Future filters — add here and wire up in FilterBar:
+  // dateRange?: 'today' | 'week' | 'month';
+  // sourceType?: 'breaking' | 'all';
+}
+
+const DEFAULT_FILTERS: FilterState = { category: 'All' };
+
+// ─── Category list ────────────────────────────────────────────────────────────
 const FILTER_CATS = [
   { key: 'All', emoji: '🌐' },
   { key: 'World', emoji: '🌍' },
@@ -53,10 +73,8 @@ const STRINGS = {
     breaking: '🔴 بریکنگ نیوز',
     trending: '🔥 ٹرینڈنگ',
     resultsFor: 'نتائج:',
-    hint: 'اوپر لکھ کر خبریں تلاش کریں',
-    categories: 'زمرے',
+    hint: 'خبریں تلاش کرنے کے لیے لکھیں',
     allCategories: 'سب',
-    searching: 'تلاش جاری ہے...',
   },
   ar: {
     title: 'بحث',
@@ -67,10 +85,8 @@ const STRINGS = {
     breaking: '🔴 عاجل',
     trending: '🔥 الأكثر تداولاً',
     resultsFor: 'نتائج:',
-    hint: 'اكتب فوق للبحث في الأخبار',
-    categories: 'التصنيفات',
+    hint: 'اكتب للبحث في الأخبار',
     allCategories: 'الكل',
-    searching: 'جارٍ البحث...',
   },
   en: {
     title: 'Search',
@@ -82,38 +98,19 @@ const STRINGS = {
     trending: '🔥 Trending',
     resultsFor: 'Results for:',
     hint: 'Search across all Islamic news',
-    categories: 'Categories',
     allCategories: 'All',
-    searching: 'Searching...',
   },
 } as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function normalize(str: string) { return str.toLowerCase().trim(); }
 
-function postMatchesCategory(post: Post, cat: string): boolean {
-  return cat === 'All' || post.category === cat;
-}
-
-function matchScore(post: Post, q: string): number {
-  const n = normalize(q);
-  let s = 0;
-  if ([post.titleEn, post.titleUr, post.titleAr, post.title].some(f => f && normalize(f).includes(n))) s += 10;
-  if ([post.bodyEn, post.bodyUr, post.bodyAr, post.body].some(f => f && normalize(f).includes(n))) s += 2;
-  if (post.isBreaking) s += 3;
-  s += Math.min((post.viewsCount ?? 0) + (post.likesCount ?? 0), 20);
-  return s;
-}
-
-// Debounce helper so we don't fire a Supabase query on every keystroke
 function useDebounced(value: string, delayMs = 400): string {
   const [debounced, setDebounced] = useState(value);
-
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(value), delayMs);
     return () => clearTimeout(timer);
   }, [value, delayMs]);
-
   return debounced;
 }
 
@@ -243,33 +240,185 @@ function PinnedCard({ post, language, colors }: {
   );
 }
 
+// ─── FilterBar ────────────────────────────────────────────────────────────────
+// Extensible filter bar. Add new filter rows inside this component as needed.
+function FilterBar({
+  filters,
+  onFiltersChange,
+  colors,
+  language,
+}: {
+  filters: FilterState;
+  onFiltersChange: (f: FilterState) => void;
+  colors: ReturnType<typeof useColors>;
+  language: string;
+}) {
+  const s = STRINGS[language as keyof typeof STRINGS] ?? STRINGS.en;
+
+  return (
+    <View style={[styles.catStrip, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+      {/* Category filter row */}
+      <ScrollView
+        horizontal showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.catScroll}
+      >
+        {FILTER_CATS.map((cat) => {
+          const active = filters.category === cat.key;
+          return (
+            <Pressable
+              key={cat.key}
+              onPress={() => onFiltersChange({ ...filters, category: cat.key })}
+              style={[
+                styles.catChip,
+                {
+                  backgroundColor: active ? colors.primary : colors.card,
+                  borderColor: active ? colors.primary : colors.border,
+                },
+              ]}
+            >
+              <Text style={styles.catEmoji}>{cat.emoji}</Text>
+              <Text style={[
+                styles.catLabel,
+                { color: active ? colors.primaryForeground : colors.foreground,
+                  fontFamily: active ? 'Inter_700Bold' : 'Inter_400Regular' },
+              ]}>
+                {cat.key === 'All' ? s.allCategories : cat.key}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+      {/* ─── Future filter rows (date range, source, etc.) go here ─── */}
+    </View>
+  );
+}
+
+// ─── BrowseView (no active query) ─────────────────────────────────────────────
+function BrowseView({
+  breakingPosts, trendingPosts, language, colors, insets,
+}: {
+  breakingPosts: Post[]; trendingPosts: Post[];
+  language: string; colors: ReturnType<typeof useColors>;
+  insets: ReturnType<typeof useSafeAreaInsets>;
+}) {
+  const s = STRINGS[language as keyof typeof STRINGS] ?? STRINGS.en;
+  const isRTL = language === 'ur' || language === 'ar';
+
+  return (
+    <ScrollView
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
+      keyboardDismissMode="on-drag"
+    >
+      {breakingPosts.length > 0 && (
+        <>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionTitleRow}>
+              <View style={[styles.sectionDot, { backgroundColor: colors.destructive }]} />
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{s.breaking}</Text>
+            </View>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: 14, gap: 10, paddingBottom: 4 }}>
+            {breakingPosts.map((p) => (
+              <PinnedCard key={p.id} post={p} language={language} colors={colors} />
+            ))}
+          </ScrollView>
+        </>
+      )}
+
+      {trendingPosts.length > 0 && (
+        <>
+          <View style={[styles.sectionHeader, { marginTop: 6 }]}>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{s.trending}</Text>
+          </View>
+          {trendingPosts.map((p, i) => (
+            <Link key={p.id} href={`/post/${p.id}`} asChild>
+              <Pressable
+                onPressIn={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
+                style={({ pressed }) => [
+                  styles.trendRow,
+                  { backgroundColor: pressed ? colors.muted : colors.card, borderColor: colors.border },
+                ]}
+              >
+                <Text style={[styles.rankNum, { color: i < 3 ? colors.accent : colors.mutedForeground }]}>
+                  {String(i + 1).padStart(2, '0')}
+                </Text>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <View style={[styles.metaRow, isRTL && styles.rowRev]}>
+                    <View style={[styles.catBadge, { backgroundColor: colors.primary + '18' }]}>
+                      <Text style={[styles.catTxt, { color: colors.primary }]}>{p.category}</Text>
+                    </View>
+                  </View>
+                  <Text
+                    style={[styles.trendTitle, { color: colors.cardForeground }, isRTL && styles.rtl]}
+                    numberOfLines={2}
+                  >
+                    {getLocalizedContent(p as any, language as any).title}
+                  </Text>
+                  <View style={styles.engRow}>
+                    <Ionicons name="eye-outline" size={12} color={colors.mutedForeground} />
+                    <Text style={[styles.engTxt, { color: colors.mutedForeground }]}>{formatCount(p.viewsCount ?? 0)}</Text>
+                    <Text style={[styles.engTxt, { color: colors.mutedForeground, marginLeft: 'auto' }]}>
+                      {timeAgo(p.publishedAt)}
+                    </Text>
+                  </View>
+                </View>
+                {p.hasImage && p.imageUrl ? (
+                  <Image source={{ uri: p.imageUrl }} style={styles.trendThumb} contentFit="cover" transition={150} />
+                ) : (
+                  <View style={[styles.trendThumb, { backgroundColor: colors.primary + '22', alignItems: 'center', justifyContent: 'center' }]}>
+                    <Ionicons name="newspaper" size={18} color={colors.primary} />
+                  </View>
+                )}
+              </Pressable>
+            </Link>
+          ))}
+        </>
+      )}
+
+      {breakingPosts.length === 0 && trendingPosts.length === 0 && (
+        <View style={styles.emptyBox}>
+          <Text style={{ fontSize: 48 }}>🔍</Text>
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{s.hint}</Text>
+        </View>
+      )}
+    </ScrollView>
+  );
+}
+
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function SearchScreen() {
   const insets = useSafeAreaInsets();
   const colors = useColors();
   const { language } = useLanguage();
-  const s = STRINGS[language];
+  const s = STRINGS[language] ?? STRINGS.en;
   const isRTL = language === 'ur' || language === 'ar';
+  const params = useLocalSearchParams<{ q?: string }>();
 
-  const [query, setQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState('All');
+  const [query, setQuery] = useState(params.q ?? '');
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const inputRef = useRef<TextInput>(null);
 
-  // Debounce the query before sending to Supabase
+  // Sync initial query from navigation params
+  useEffect(() => {
+    if (params.q) {
+      setQuery(params.q);
+      inputRef.current?.focus();
+    }
+  }, [params.q]);
+
   const debouncedQuery = useDebounced(query, 400);
   const hasQuery = query.trim().length > 0;
 
-  // --- Server-side search (fires when user has typed something) ---
-  const {
-    data: serverResults,
-    isLoading: isSearching,
-    isFetching: isSearchFetching,
-  } = useSearchPosts(
-    { query: debouncedQuery, category: activeCategory, limit: 100 },
-    { enabled: debouncedQuery.trim().length > 0 },
-  );
+  // Server-side search
+  const { data: serverResults, isLoading: isSearching, isFetching: isSearchFetching } =
+    useSearchPosts(
+      { query: debouncedQuery, category: filters.category, limit: 100 },
+      { enabled: debouncedQuery.trim().length > 0 },
+    );
 
-  // --- Category browse feed (used when no text query) ---
+  // Category browse (no text query)
   const { data: feedData, isLoading: isFeedLoading } = useListPosts(
     { limit: 150 },
     { query: { enabled: !hasQuery } },
@@ -278,63 +427,45 @@ export default function SearchScreen() {
 
   const breakingPosts = useMemo(
     () => allPosts.filter((p) => p.isBreaking).slice(0, 5),
-    [allPosts]
+    [allPosts],
   );
-
   const trendingPosts = useMemo(() => {
-    const breakingIds = new Set(breakingPosts.map((p) => p.id));
+    const bids = new Set(breakingPosts.map((p) => p.id));
     return [...allPosts]
-      .filter((p) => !breakingIds.has(p.id) && postMatchesCategory(p, activeCategory))
+      .filter((p) => !bids.has(p.id) && (filters.category === 'All' || p.category === filters.category))
       .sort((a, b) => (b.viewsCount + b.likesCount) - (a.viewsCount + a.likesCount))
       .slice(0, 10);
-  }, [allPosts, breakingPosts, activeCategory]);
+  }, [allPosts, breakingPosts, filters.category]);
 
-  // --- What to show ---
-  //  • hasQuery → server results (real DB search across all posts)
-  //  • activeCategory !== All, no query → client-filtered feed posts
-  //  • no query, All category → browsing mode (breaking + trending)
   const categoryOnlyResults = useMemo(() => {
-    if (hasQuery || activeCategory === 'All') return [];
+    if (hasQuery || filters.category === 'All') return [];
     return allPosts
-      .filter((p) => p.category === activeCategory)
+      .filter((p) => p.category === filters.category)
       .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-  }, [hasQuery, activeCategory, allPosts]);
+  }, [hasQuery, filters.category, allPosts]);
 
   const showSearchResults = hasQuery;
-  const showCategoryResults = !hasQuery && activeCategory !== 'All';
-  const showBrowse = !hasQuery && activeCategory === 'All';
+  const showCategoryResults = !hasQuery && filters.category !== 'All';
+  const showBrowse = !hasQuery && filters.category === 'All';
 
-  const isLoading = showSearchResults
-    ? (isSearching || isSearchFetching)
-    : isFeedLoading;
-
-  const results: Post[] = showSearchResults
-    ? (serverResults ?? []).filter(p => postMatchesCategory(p, activeCategory))
-    : showCategoryResults
-      ? categoryOnlyResults
-      : [];
-
+  const isLoading = showSearchResults ? (isSearching || isSearchFetching) : isFeedLoading;
+  const results: Post[] = showSearchResults ? (serverResults ?? []) : showCategoryResults ? categoryOnlyResults : [];
   const showResults = showSearchResults || showCategoryResults;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
-      {/* ── Header ─────────────────────────────────────────────────────── */}
+      {/* ── Header ── */}
       <LinearGradient
         colors={[colors.headerGradientStart, colors.headerGradientEnd]}
         style={[styles.header, { paddingTop: insets.top + 8 }]}
       >
         <Text style={[styles.headerTitle, { color: colors.primaryForeground }]}>{s.title}</Text>
-
-        {/* Search bar */}
         <View style={[styles.searchRow, { paddingBottom: 12 }]}>
           <View style={[styles.searchBox, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
             {isSearchFetching && hasQuery ? (
               <ActivityIndicator size="small" color="rgba(255,255,255,0.7)" style={{ marginRight: 8 }} />
             ) : (
-              <Ionicons
-                name="search-outline" size={18} color="rgba(255,255,255,0.7)"
-                style={{ marginRight: 8 }}
-              />
+              <Ionicons name="search-outline" size={18} color="rgba(255,255,255,0.7)" style={{ marginRight: 8 }} />
             )}
             <TextInput
               ref={inputRef}
@@ -362,41 +493,10 @@ export default function SearchScreen() {
         </View>
       </LinearGradient>
 
-      {/* ── Category filter strip ──────────────────────────────────────── */}
-      <View style={[styles.catStrip, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-        <ScrollView
-          horizontal showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.catScroll}
-        >
-          {FILTER_CATS.map((cat) => {
-            const active = activeCategory === cat.key;
-            return (
-              <Pressable
-                key={cat.key}
-                onPress={() => setActiveCategory(cat.key)}
-                style={[
-                  styles.catChip,
-                  {
-                    backgroundColor: active ? colors.primary : colors.card,
-                    borderColor: active ? colors.primary : colors.border,
-                  },
-                ]}
-              >
-                <Text style={styles.catEmoji}>{cat.emoji}</Text>
-                <Text style={[
-                  styles.catLabel,
-                  { color: active ? colors.primaryForeground : colors.foreground,
-                    fontFamily: active ? 'Inter_700Bold' : 'Inter_400Regular' },
-                ]}>
-                  {cat.key === 'All' ? s.allCategories : cat.key}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
-      </View>
+      {/* ── Extensible Filter Bar ── */}
+      <FilterBar filters={filters} onFiltersChange={setFilters} colors={colors} language={language} />
 
-      {/* ── Body ──────────────────────────────────────────────────────── */}
+      {/* ── Body ── */}
       {isLoading ? (
         <View style={{ paddingTop: 8 }}>
           {[1, 2, 3].map((i) => <SkeletonCard key={i} />)}
@@ -431,140 +531,47 @@ export default function SearchScreen() {
           </>
         )
       ) : showBrowse ? (
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
-          keyboardDismissMode="on-drag"
-        >
-          {/* Breaking */}
-          {breakingPosts.length > 0 && (
-            <>
-              <View style={[styles.sectionHeader, { backgroundColor: colors.background }]}>
-                <View style={styles.sectionTitleRow}>
-                  <View style={[styles.sectionDot, { backgroundColor: colors.destructive }]} />
-                  <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{s.breaking}</Text>
-                </View>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingHorizontal: 14, gap: 10, paddingBottom: 4 }}>
-                {breakingPosts.map((p) => (
-                  <PinnedCard key={p.id} post={p} language={language} colors={colors} />
-                ))}
-              </ScrollView>
-            </>
-          )}
-
-          {/* Trending */}
-          {trendingPosts.length > 0 && (
-            <>
-              <View style={[styles.sectionHeader, { backgroundColor: colors.background, marginTop: 6 }]}>
-                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{s.trending}</Text>
-              </View>
-              {trendingPosts.map((p, i) => (
-                <Link key={p.id} href={`/post/${p.id}`} asChild>
-                  <Pressable
-                    onPressIn={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-                    style={({ pressed }) => [
-                      styles.trendRow,
-                      { backgroundColor: pressed ? colors.muted : colors.card, borderColor: colors.border },
-                    ]}
-                  >
-                    <Text style={[styles.rankNum, { color: i < 3 ? colors.accent : colors.mutedForeground }]}>
-                      {String(i + 1).padStart(2, '0')}
-                    </Text>
-                    <View style={{ flex: 1, gap: 4 }}>
-                      <View style={[styles.metaRow, isRTL && styles.rowRev]}>
-                        <View style={[styles.catBadge, { backgroundColor: colors.primary + '18' }]}>
-                          <Text style={[styles.catTxt, { color: colors.primary }]}>{p.category}</Text>
-                        </View>
-                      </View>
-                      <Text
-                        style={[styles.trendTitle, { color: colors.cardForeground }, isRTL && styles.rtl]}
-                        numberOfLines={2}
-                      >
-                        {getLocalizedContent(p as any, language as any).title}
-                      </Text>
-                      <View style={styles.engRow}>
-                        <Ionicons name="eye-outline" size={12} color={colors.mutedForeground} />
-                        <Text style={[styles.engTxt, { color: colors.mutedForeground }]}>{formatCount(p.viewsCount ?? 0)}</Text>
-                        <Text style={[styles.engTxt, { color: colors.mutedForeground, marginLeft: 'auto' }]}>
-                          {timeAgo(p.publishedAt)}
-                        </Text>
-                      </View>
-                    </View>
-                    {p.hasImage && p.imageUrl ? (
-                      <Image source={{ uri: p.imageUrl }} style={styles.trendThumb} contentFit="cover" transition={150} />
-                    ) : (
-                      <View style={[styles.trendThumb, { backgroundColor: colors.primary + '22', alignItems: 'center', justifyContent: 'center' }]}>
-                        <Ionicons name="newspaper" size={18} color={colors.primary} />
-                      </View>
-                    )}
-                  </Pressable>
-                </Link>
-              ))}
-            </>
-          )}
-
-          {breakingPosts.length === 0 && trendingPosts.length === 0 && (
-            <View style={styles.emptyBox}>
-              <Text style={{ fontSize: 48 }}>🔍</Text>
-              <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{s.hint}</Text>
-            </View>
-          )}
-        </ScrollView>
+        <BrowseView
+          breakingPosts={breakingPosts}
+          trendingPosts={trendingPosts}
+          language={language}
+          colors={colors}
+          insets={insets}
+        />
       ) : null}
     </View>
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   root: { flex: 1 },
   header: { paddingHorizontal: 16 },
-  headerTitle: {
-    fontSize: 22, fontFamily: 'Inter_700Bold',
-    marginBottom: 12, textAlign: 'center',
-  },
+  headerTitle: { fontSize: 22, fontFamily: 'Inter_700Bold', marginBottom: 12, textAlign: 'center' },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  searchBox: {
-    flex: 1, flexDirection: 'row', alignItems: 'center',
-    borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11,
-  },
+  searchBox: { flex: 1, flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11 },
   searchInput: { flex: 1, fontSize: 15, padding: 0, fontFamily: 'Inter_400Regular' },
   cancelTxt: { fontSize: 14, fontFamily: 'Inter_500Medium' },
 
-  /* Category strip */
   catStrip: { borderBottomWidth: StyleSheet.hairlineWidth },
   catScroll: { paddingHorizontal: 14, paddingVertical: 9, gap: 7 },
-  catChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 100, borderWidth: 1,
-  },
+  catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, borderWidth: 1 },
   catEmoji: { fontSize: 12 },
   catLabel: { fontSize: 12 },
 
-  /* Section headers */
   sectionHeader: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
   sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sectionDot: { width: 8, height: 8, borderRadius: 4 },
   sectionTitle: { fontSize: 17, fontFamily: 'Inter_700Bold' },
 
-  /* Pinned cards */
   pinnedCard: { width: 210, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   pinnedImg: { width: '100%', height: 120 },
   pinnedBody: { padding: 10 },
   pinnedTitle: { fontSize: 13, fontFamily: 'Inter_600SemiBold', lineHeight: 18 },
 
-  /* Results header */
   resultsHeader: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   resultsLabel: { fontSize: 13, fontFamily: 'Inter_400Regular' },
 
-  /* Result row */
-  resultRow: {
-    flexDirection: 'row', marginHorizontal: 12, marginVertical: 5,
-    borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden',
-  },
+  resultRow: { flexDirection: 'row', marginHorizontal: 12, marginVertical: 5, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
   thumb: { width: 80, height: 95 },
   thumbPlaceholder: { width: 80, height: 95, alignItems: 'center', justifyContent: 'center' },
   resultContent: { flex: 1, padding: 10, gap: 4 },
@@ -580,22 +587,12 @@ const styles = StyleSheet.create({
   engRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   engTxt: { fontSize: 11, fontFamily: 'Inter_400Regular' },
 
-  /* Trending */
-  trendRow: {
-    flexDirection: 'row', alignItems: 'center',
-    marginHorizontal: 12, marginVertical: 5,
-    borderRadius: 14, borderWidth: StyleSheet.hairlineWidth,
-    padding: 10, gap: 10, overflow: 'hidden',
-  },
+  trendRow: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 12, marginVertical: 5, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 10, gap: 10, overflow: 'hidden' },
   rankNum: { fontSize: 22, fontFamily: 'Inter_700Bold', width: 34, textAlign: 'center' },
   trendTitle: { fontSize: 14, fontFamily: 'Inter_600SemiBold', lineHeight: 19 },
   trendThumb: { width: 64, height: 64, borderRadius: 10 },
 
-  /* Empty */
-  emptyBox: {
-    flex: 1, alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 40, gap: 12, paddingTop: 80,
-  },
+  emptyBox: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, gap: 12, paddingTop: 80 },
   emptyTitle: { fontSize: 17, fontFamily: 'Inter_600SemiBold', textAlign: 'center' },
   emptySub: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center' },
 

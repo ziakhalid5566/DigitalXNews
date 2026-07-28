@@ -17,10 +17,11 @@ import * as Notifications from 'expo-notifications';
 
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { NotificationsProvider } from '@/contexts/NotificationsContext';
+import { ThemeProvider } from '@/contexts/ThemeContext';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { SplashAnimation } from '@/components/SplashAnimation';
 
-// How push notifications are handled when the app is in the foreground.
+// Foreground notification handler
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -31,10 +32,7 @@ Notifications.setNotificationHandler({
   }),
 });
 
-// Prevent the native splash screen from auto-hiding before fonts load.
 SplashScreen.preventAutoHideAsync();
-
-// Base URL removed — app now reads directly from Supabase SDK
 
 const queryClient = new QueryClient();
 
@@ -47,29 +45,34 @@ function RootLayoutNav() {
   );
 }
 
-/** Requests push permission on very first launch, then registers silently. */
+/**
+ * Handles push notification registration on first launch.
+ * Shows the native Android/iOS permission dialog once, on first open.
+ */
 function AppWithPush() {
   usePushNotifications();
 
-  // First-launch notification permission request
+  // Item 4: Show native notification permission dialog on very first launch
   useEffect(() => {
-    const ASKED_KEY = '@notif_permission_asked';
+    const ASKED_KEY = '@notif_permission_asked_v2';
     (async () => {
       try {
-        const asked = await import('@react-native-async-storage/async-storage')
-          .then((m) => m.default.getItem(ASKED_KEY));
-        if (asked) return; // already asked
-        // Mark as asked immediately so we never show twice
-        const AS = (await import('@react-native-async-storage/async-storage')).default;
-        await AS.setItem(ASKED_KEY, '1');
-        // Small delay so the UI is fully loaded before the system dialog appears
-        await new Promise((r) => setTimeout(r, 1500));
+        const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+        const asked = await AsyncStorage.getItem(ASKED_KEY);
+        if (asked) return;
+        // Mark immediately so we never double-show
+        await AsyncStorage.setItem(ASKED_KEY, '1');
+        // Wait for UI to settle before showing the dialog
+        await new Promise((r) => setTimeout(r, 1800));
         const { status: existing } = await Notifications.getPermissionsAsync();
-        if (existing === 'granted') return; // already have permission
+        if (existing === 'granted') return;
         await Notifications.requestPermissionsAsync({
+          android: {},
           ios: { allowAlert: true, allowBadge: true, allowSound: true },
         });
-      } catch {}
+      } catch {
+        // Silently ignore — non-critical
+      }
     })();
   }, []);
 
@@ -92,7 +95,6 @@ export default function RootLayout() {
 
   const [showSplash, setShowSplash] = useState(true);
 
-  // Hide the native OS splash once fonts are ready
   useEffect(() => {
     if (fontsLoaded || fontError) {
       SplashScreen.hideAsync();
@@ -103,22 +105,22 @@ export default function RootLayout() {
     setShowSplash(false);
   }, []);
 
-  // Don't render anything until fonts are ready
   if (!fontsLoaded && !fontError) return null;
 
   return (
     <SafeAreaProvider>
-      <ErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <LanguageProvider>
-            <NotificationsProvider>
-              <AppWithPush />
-              {/* Animated intro — overlaid on top until done */}
-              {showSplash && <SplashAnimation onDone={handleSplashDone} />}
-            </NotificationsProvider>
-          </LanguageProvider>
-        </QueryClientProvider>
-      </ErrorBoundary>
+      <ThemeProvider>
+        <ErrorBoundary>
+          <QueryClientProvider client={queryClient}>
+            <LanguageProvider>
+              <NotificationsProvider>
+                <AppWithPush />
+                {showSplash && <SplashAnimation onDone={handleSplashDone} />}
+              </NotificationsProvider>
+            </LanguageProvider>
+          </QueryClientProvider>
+        </ErrorBoundary>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
