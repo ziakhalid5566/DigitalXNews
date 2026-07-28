@@ -44,8 +44,6 @@ jobs:
       KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || 'DigitalXNews2024!' }}
       STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD || 'DigitalXNews2024!' }}
       BUILD_TYPE: ${{ github.event.inputs.build_type || 'release' }}
-      # Automatically answer 'yes' to all Expo CLI prompts (dependency install, etc.)
-      EXPO_YES: "1"
 
     steps:
       - name: Checkout repository
@@ -132,9 +130,11 @@ jobs:
       - name: Run expo prebuild (Android)
         working-directory: artifacts/islamnashra
         run: |
-          # CI=1 is automatically set by GitHub Actions and handles non-interactive mode.
-          # EXPO_NO_DEPENDENCY_UPDATE=1 (set in job env) skips the dependency install prompt.
-          npx expo prebuild \
+          # Expo SDK 54 throws when CI=1 and it needs to ask "Install updated dependencies?"
+          # Fix: unset CI so expo shows the prompt, then pipe "y" to accept it via stdin.
+          # This is safe for prebuild — it doesn't trigger any browser auth or interactive flows.
+          unset CI
+          printf "y\n" | npx expo prebuild \
             --platform android \
             --clean
         env:
