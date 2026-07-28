@@ -41,4 +41,5 @@ yarn-error.*
 .env
 
 # Firebase - use GOOGLE_SERVICES_JSON GitHub secret instead
-google-services.json
+# google-services.json is committed — real Firebase config for FCM push notifications
+# !google-services.json

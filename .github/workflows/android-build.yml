@@ -95,37 +95,17 @@ jobs:
           restore-keys: ${{ runner.os }}-gradle-
 
       # ── google-services.json ─────────────────────────────────────────────────
-      # google-services.json is in .gitignore (security). Create it here from
-      # the GOOGLE_SERVICES_JSON secret, or use a placeholder for FCM-free builds.
-      - name: Set up google-services.json
+      # Real google-services.json is committed to the repo (Firebase project: digitalxnews-8ffd0).
+      # FCM push notifications are fully enabled in all builds.
+      - name: Verify google-services.json
         working-directory: artifacts/islamnashra
         run: |
-          if [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
-            echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > google-services.json
-            echo "Loaded google-services.json from secret"
+          if [ -f "google-services.json" ]; then
+            PROJECT=$(python3 -c "import json,sys; d=json.load(open('google-services.json')); print(d['project_info']['project_id'])" 2>/dev/null || echo "unknown")
+            echo "✓ google-services.json present — project: $PROJECT"
           else
-            cat > google-services.json <<'EOF'
-          {
-            "project_info": {
-              "project_number": "000000000000",
-              "project_id": "digitalxnews-placeholder",
-              "storage_bucket": "digitalxnews-placeholder.appspot.com"
-            },
-            "client": [
-              {
-                "client_info": {
-                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
-                  "android_client_info": { "package_name": "com.digitalxnews.islamnashra" }
-                },
-                "oauth_client": [],
-                "api_key": [{"current_key": "placeholder"}],
-                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
-              }
-            ],
-            "configuration_version": "1"
-          }
-          EOF
-            echo "Using placeholder google-services.json (add GOOGLE_SERVICES_JSON secret for FCM)"
+            echo "::error::google-services.json is missing! FCM push notifications will not work."
+            exit 1
           fi
 
       # ── Fix Babel pnpm resolution ─────────────────────────────────────────────

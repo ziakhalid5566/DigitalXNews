@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, StyleSheet, useColorScheme, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
 import { Feather } from '@expo/vector-icons';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,7 @@ import { Tabs } from 'expo-router';
 import { Icon, Label, NativeTabs } from 'expo-router/unstable-native-tabs';
 import { SymbolView } from 'expo-symbols';
 import { useNotifications } from '@/contexts/NotificationsContext';
+import { useTheme } from '@/contexts/ThemeContext';
 
 // iOS 26 NativeTabs — liquid glass system appearance
 function NativeTabLayout() {
@@ -36,8 +37,7 @@ function NativeTabLayout() {
 
 function ClassicTabLayout() {
   const colors = useColors();
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const { isDark } = useTheme();
   const isIOS = Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
   const { unreadCount } = useNotifications();
