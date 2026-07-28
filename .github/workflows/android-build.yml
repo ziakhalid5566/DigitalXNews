@@ -95,14 +95,46 @@ jobs:
           restore-keys: ${{ runner.os }}-gradle-
 
       # ── google-services.json ─────────────────────────────────────────────────
+      # google-services.json is in .gitignore (security). Create it here from
+      # the GOOGLE_SERVICES_JSON secret, or use a placeholder for FCM-free builds.
       - name: Set up google-services.json
         working-directory: artifacts/islamnashra
         run: |
-          # expo/react/react-native are now in dependencies (not devDependencies).
-          # Prebuild won't detect package.json changes, so no interactive prompt occurs.
-          npx expo prebuild \
-            --platform android \
-            --clean
+          if [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
+            echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > google-services.json
+            echo "Loaded google-services.json from secret"
+          else
+            cat > google-services.json <<'EOF'
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "digitalxnews-placeholder",
+              "storage_bucket": "digitalxnews-placeholder.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
+                  "android_client_info": { "package_name": "com.digitalxnews.islamnashra" }
+                },
+                "oauth_client": [],
+                "api_key": [{"current_key": "placeholder"}],
+                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
+            echo "Using placeholder google-services.json (add GOOGLE_SERVICES_JSON secret for FCM)"
+          fi
+
+      # ── Expo Prebuild ────────────────────────────────────────────────────────
+      # expo/react/react-native are in package.json dependencies (not devDependencies),
+      # matching what prebuild expects — so no package.json change is detected and
+      # the interactive "Install updated dependencies?" prompt never appears.
+      - name: Run expo prebuild (Android)
+        working-directory: artifacts/islamnashra
+        run: npx expo prebuild --platform android --clean
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ env.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ env.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
@@ -113,9 +145,9 @@ jobs:
         run: |
           if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
             echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > release.keystore
-            echo "✅ Keystore loaded from ANDROID_KEYSTORE_BASE64 secret"
+            echo "Keystore loaded from ANDROID_KEYSTORE_BASE64 secret"
           else
-            echo "⚠️ Auto-generating keystore (add ANDROID_KEYSTORE_BASE64 secret for consistent signing)"
+            echo "Auto-generating keystore (add ANDROID_KEYSTORE_BASE64 secret for consistent signing)"
             keytool -genkey -v \
               -keystore release.keystore \
               -alias "$KEY_ALIAS" \
@@ -135,23 +167,16 @@ jobs:
           keyAlias=$KEY_ALIAS
           keyPassword=$KEY_PASSWORD
           EOF
-          echo "✅ keystore.properties written"
+          echo "keystore.properties written"
 
-          # Patch app/build.gradle to read keystore.properties
           GRADLE="app/build.gradle"
           if ! grep -q "keystoreProperties" "$GRADLE"; then
-            # Insert properties reader before android block
             sed -i 's/^android {/def keystorePropertiesFile = rootProject.file("keystore.properties")\ndef keystoreProperties = new Properties()\nif (keystorePropertiesFile.exists()) { keystoreProperties.load(new FileInputStream(keystorePropertiesFile)) }\n\nandroid {/' "$GRADLE"
-
-            # Insert signingConfigs inside android block
             sed -i '/^android {/a\    signingConfigs {\n        release {\n            if (keystoreProperties["storeFile"]) {\n                storeFile file(keystoreProperties["storeFile"])\n                storePassword keystoreProperties["storePassword"]\n                keyAlias keystoreProperties["keyAlias"]\n                keyPassword keystoreProperties["keyPassword"]\n            }\n        }\n    }' "$GRADLE"
-
-            # Set release buildType to use release signingConfig
             sed -i '/buildTypes {/{n;/release {/a\            signingConfig signingConfigs.release\n            minifyEnabled true\n            shrinkResources true}' "$GRADLE" || true
-
-            echo "✅ app/build.gradle patched with signingConfig"
+            echo "app/build.gradle patched with signingConfig"
           else
-            echo "ℹ️ app/build.gradle already has keystoreProperties"
+            echo "app/build.gradle already has keystoreProperties"
           fi
 
       # ── Build APK ────────────────────────────────────────────────────────────
@@ -172,7 +197,7 @@ jobs:
 
           [ -z "$APK" ] && { echo "::error::APK not found!"; find . -name "*.apk"; exit 1; }
 
-          echo "✅ APK: $APK ($(du -sh "$APK" | cut -f1))"
+          echo "APK: $APK ($(du -sh "$APK" | cut -f1))"
           echo "APK_PATH=$APK" >> "$GITHUB_ENV"
           echo "APK_SIZE=$(du -sh "$APK" | cut -f1)" >> "$GITHUB_ENV"
 
@@ -192,18 +217,18 @@ jobs:
           SHORT="${{ github.sha }}"
           SHORT="${SHORT:0:7}"
           {
-            echo "## ✅ Android APK Build"
+            echo "## Android APK Build"
             echo "| | |"
             echo "|---|---|"
             echo "| Build type | \`${{ env.BUILD_TYPE }}\` |"
             echo "| APK size | ${{ env.APK_SIZE }} |"
             echo "| Commit | \`$SHORT\` |"
             echo ""
-            echo "### 📥 Download"
-            echo "**Artifacts** سیکشن میں جائیں → APK ڈاؤنلوڈ کریں"
+            echo "### Download"
+            echo "**Artifacts** section mein jayein → APK download karen"
             echo ""
-            echo "### 📱 Android پر Install"
-            echo "1. APK phone میں transfer کریں"
+            echo "### Android par Install"
+            echo "1. APK phone mein transfer karen"
             echo "2. Settings → Security → Unknown Sources → Allow"
-            echo "3. APK پر tap کریں → Install"
+            echo "3. APK par tap karen → Install"
           } >> "$GITHUB_STEP_SUMMARY"
