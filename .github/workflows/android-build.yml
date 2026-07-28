@@ -129,15 +129,21 @@ jobs:
           fi
 
       # ── Expo Prebuild ────────────────────────────────────────────────────────
-      # expo/react/react-native are in package.json dependencies (not devDependencies),
-      # matching what prebuild expects — so no package.json change is detected and
-      # the interactive "Install updated dependencies?" prompt never appears.
+      # KEY FIX for Expo 54:
+      #   - EXPO_NO_DEPENDENCY_UPDATE=1  → stops "Install updated packages?" prompt
+      #   - CI=1                         → forces non-interactive mode globally
+      #   - NO_COLOR=1                   → disables color output that can confuse stdin detection
+      #   The old --non-interactive flag was removed in Expo 54 and EXPO_YES=1
+      #   was also removed. EXPO_NO_DEPENDENCY_UPDATE=1 is the correct fix.
       - name: Run expo prebuild (Android)
         working-directory: artifacts/islamnashra
-        run: npx expo prebuild --platform android --clean
         env:
+          CI: "1"
+          EXPO_NO_DEPENDENCY_UPDATE: "1"
+          NO_COLOR: "1"
           EXPO_PUBLIC_SUPABASE_URL: ${{ env.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ env.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+        run: npx expo prebuild --platform android --clean
 
       # ── Keystore ─────────────────────────────────────────────────────────────
       - name: Set up Android signing keystore
@@ -157,7 +163,7 @@ jobs:
               -dname "CN=DigitalXNews,OU=Mobile,O=DigitalXNews,L=Islamabad,ST=Punjab,C=PK"
           fi
 
-      # ── Inject signing into Gradle ────────────────────────────────────────────
+      # ── Inject signing into Gradle ─────────────────────────────────────────
       - name: Configure Gradle signing
         working-directory: artifacts/islamnashra/android
         run: |
@@ -197,16 +203,18 @@ jobs:
 
           [ -z "$APK" ] && { echo "::error::APK not found!"; find . -name "*.apk"; exit 1; }
 
-          echo "APK: $APK ($(du -sh "$APK" | cut -f1))"
-          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
-          echo "APK_SIZE=$(du -sh "$APK" | cut -f1)" >> "$GITHUB_ENV"
+          # Convert relative path (./app/build/...) to absolute for upload step
+          APK_ABS=$(realpath "$APK")
+          echo "APK: $APK_ABS ($(du -sh "$APK_ABS" | cut -f1))"
+          echo "APK_PATH=$APK_ABS" >> "$GITHUB_ENV"
+          echo "APK_SIZE=$(du -sh "$APK_ABS" | cut -f1)" >> "$GITHUB_ENV"
 
       # ── Upload artifact ──────────────────────────────────────────────────────
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: DigitalXNews-${{ env.BUILD_TYPE }}-${{ github.sha }}
-          path: artifacts/islamnashra/android/${{ env.APK_PATH }}
+          path: ${{ env.APK_PATH }}
           retention-days: 30
           if-no-files-found: error
 
