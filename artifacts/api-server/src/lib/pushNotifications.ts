@@ -12,34 +12,20 @@
  */
 
 import Expo, { type ExpoPushMessage, type ExpoPushTicket, type ExpoPushReceiptId } from "expo-server-sdk";
+import { eq, isNotNull } from "drizzle-orm";
+import { db, userPreferencesTable } from "@workspace/db";
 import { logger } from "./logger";
 
 const expo = new Expo();
 
-/** Remove a stale/invalid push token from Supabase so it is never used again. */
+/** Remove a stale/invalid push token from the database so it is never used again. */
 async function removeStaleTokenFromSupabase(token: string): Promise<void> {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceRoleKey) return;
-
   try {
-    // Set push_token to NULL for any row that still has this stale token
-    const url = `${supabaseUrl}/rest/v1/user_preferences?push_token=eq.${encodeURIComponent(token)}`;
-    const res = await fetch(url, {
-      method: "PATCH",
-      headers: {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-        "Content-Type": "application/json",
-        Prefer: "return=minimal",
-      },
-      body: JSON.stringify({ push_token: null }),
-    });
-    if (res.ok) {
-      logger.info({ token: token.slice(-8) }, "Stale push token removed from Supabase");
-    } else {
-      logger.warn({ status: res.status, token: token.slice(-8) }, "Failed to remove stale token from Supabase");
-    }
+    await db
+      .update(userPreferencesTable)
+      .set({ push_token: null })
+      .where(eq(userPreferencesTable.push_token, token));
+    logger.info({ token: token.slice(-8) }, "Stale push token removed");
   } catch (err) {
     logger.warn({ err }, "Error removing stale push token");
   }

@@ -114,34 +114,12 @@ jobs:
             exit 1
           fi
 
-      # ── Fix Babel pnpm resolution ─────────────────────────────────────────────
-      # In pnpm workspaces each package only gets its direct deps in node_modules.
-      # Babel resolves presets relative to babel.config.js, so babel-preset-expo
-      # (a transitive dep) is not visible to it even though pnpm installed it.
-      # Solution: symlink the already-installed packages into the local node_modules.
-      - name: Fix Babel preset resolution for pnpm workspace
-        run: |
-          PKG_DIR="artifacts/islamnashra/node_modules"
-          mkdir -p "$PKG_DIR"
-
-          # Find babel-preset-expo in pnpm virtual store and symlink it
-          for PKG in babel-preset-expo @babel/plugin-transform-react-jsx-source; do
-            if [ ! -e "$PKG_DIR/$PKG" ]; then
-              FOUND=$(find node_modules/.pnpm -maxdepth 3 -type d -name "$PKG" 2>/dev/null | \
-                grep "/node_modules/${PKG}$" | head -1)
-              if [ -n "$FOUND" ]; then
-                # Preserve @scope/ directory structure
-                SCOPE_DIR=$(dirname "$PKG_DIR/$PKG")
-                mkdir -p "$SCOPE_DIR"
-                ln -sf "$(realpath "$FOUND")" "$PKG_DIR/$PKG"
-                echo "Symlinked $PKG → $FOUND"
-              else
-                echo "WARNING: $PKG not found in pnpm store (may be optional)"
-              fi
-            else
-              echo "$PKG already present in node_modules"
-            fi
-          done
+      # ── Babel preset resolution ─────────────────────────────────────────────
+      # babel-preset-expo is now a direct devDependency of the mobile app, so
+      # pnpm places it in the local node_modules automatically. No symlink needed.
+      - name: Verify Babel preset is available
+        working-directory: artifacts/islamnashra
+        run: node -e "require('babel-preset-expo'); console.log('babel-preset-expo OK')"
 
       # ── Expo Prebuild ────────────────────────────────────────────────────────
       # KEY FIX for Expo 54:

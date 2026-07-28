@@ -13,7 +13,8 @@
  * Using the REST API avoids needing a direct DB password.
  */
 
-import { db } from "@workspace/db";
+import { db, userPreferencesTable } from "@workspace/db";
+import { isNotNull, and } from "drizzle-orm";
 import { postsTable, flaggedPostsTable } from "@workspace/db";
 import { generateNewsArticles, generateSingleAgentArticles, AGENT_COUNT } from "../lib/newsGenerator";
 import { moderateContent } from "../lib/contentModeration";
@@ -52,58 +53,30 @@ function resetDailyCountIfNeeded(): void {
 }
 
 // ── Supabase push-token fetcher ────────────────────────────────────────────────
-// The Expo app saves push tokens directly to Supabase via the JS SDK.
-// We read them here using the service role key so we can reach ALL users,
-// regardless of which PostgreSQL the Drizzle DB instance points to.
-
-interface SupabasePref {
-  push_token: string | null;
-  notifications_enabled: boolean;
-  followed_categories: string[] | null;
-}
-
 async function fetchPushTokensFromSupabase(
   category: string,
   isBreaking: boolean,
 ): Promise<string[]> {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    logger.warn(
-      "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set — skipping push notifications",
-    );
-    return [];
-  }
-
   try {
-    const url =
-      `${supabaseUrl}/rest/v1/user_preferences` +
-      `?select=push_token,notifications_enabled,followed_categories` +
-      `&notifications_enabled=eq.true` +
-      `&push_token=not.is.null`;
-
-    const res = await fetch(url, {
-      headers: {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-    });
-
-    if (!res.ok) {
-      logger.warn({ status: res.status }, "Supabase push token fetch failed");
-      return [];
-    }
-
-    const rows: SupabasePref[] = (await res.json()) as SupabasePref[];
+    const rows = await db
+      .select({
+        push_token: userPreferencesTable.push_token,
+        notifications_enabled: userPreferencesTable.notifications_enabled,
+        followed_categories: userPreferencesTable.followed_categories,
+      })
+      .from(userPreferencesTable)
+      .where(
+        and(
+          isNotNull(userPreferencesTable.push_token),
+        )
+      );
 
     const tokens = rows
       .filter((p) => {
         if (!p.push_token) return false;
+        if (!p.notifications_enabled) return false;
         if (isBreaking || ALWAYS_NOTIFY_CATEGORIES.has(category)) return true;
-        const cats = p.followed_categories ?? [];
+        const cats = (p.followed_categories as string[] | null) ?? [];
         if (cats.length === 0) return true;
         return cats.includes(category);
       })
@@ -111,12 +84,12 @@ async function fetchPushTokensFromSupabase(
 
     logger.info(
       { total: rows.length, eligible: tokens.length, category, isBreaking },
-      "Push tokens fetched from Supabase",
+      "Push tokens fetched via Drizzle",
     );
 
     return tokens;
   } catch (err) {
-    logger.error({ err }, "Error fetching push tokens from Supabase");
+    logger.error({ err }, "Error fetching push tokens");
     return [];
   }
 }

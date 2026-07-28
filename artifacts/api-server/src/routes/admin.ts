@@ -1,20 +1,39 @@
 /**
  * Admin routes for content moderation.
  *
- * These routes allow the developer to review and approve or reject
- * AI-generated articles that were flagged by the content moderation filter.
- *
- * In production, protect these routes with an admin API key or IP allowlist.
- * For now they are open for development convenience.
+ * Protected by ADMIN_API_KEY env var. Set it in production; if unset,
+ * only localhost requests are allowed through.
  */
 
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response, type NextFunction } from "express";
 import { db } from "@workspace/db";
 import { flaggedPostsTable, postsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { runNewsGenerationJob } from "../jobs/newsGenerationJob";
 
 const router: IRouter = Router();
+
+/** Simple API key guard — set ADMIN_API_KEY env var to enable. */
+function adminAuth(req: Request, res: Response, next: NextFunction): void {
+  const adminKey = process.env.ADMIN_API_KEY;
+  if (!adminKey) {
+    // No key configured → allow only loopback
+    const ip = req.ip ?? "";
+    if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1") {
+      return next();
+    }
+    res.status(401).json({ error: "ADMIN_API_KEY not configured; remote access denied" });
+    return;
+  }
+  const provided = req.headers["x-admin-key"] ?? req.query["adminKey"];
+  if (provided !== adminKey) {
+    res.status(401).json({ error: "Invalid admin key" });
+    return;
+  }
+  next();
+}
+
+router.use(adminAuth);
 
 // GET /admin/flagged — list all posts awaiting moderation
 router.get("/admin/flagged", async (_req, res): Promise<void> => {
@@ -41,7 +60,7 @@ router.post("/admin/flagged/:id/approve", async (req, res): Promise<void> => {
   }
 
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + 72 * 60 * 60 * 1000);
+  const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
   const [post] = await db
     .insert(postsTable)
