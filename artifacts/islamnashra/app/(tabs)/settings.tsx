@@ -19,7 +19,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useGetPreferences, useUpsertPreferences } from '@/lib/api';
 import { useLanguage, LANGUAGE_OPTIONS } from '@/contexts/LanguageContext';
 import { useTheme, type ThemeMode } from '@/contexts/ThemeContext';
-import { registerForPushNotificationsAsync, type PushRegistrationResult } from '@/hooks/usePushNotifications';
+import * as Notifications from 'expo-notifications';
+import { registerForPushNotificationsAsync, refreshPushToken, type PushRegistrationResult } from '@/hooks/usePushNotifications';
 import Constants from 'expo-constants';
 import { Image } from 'expo-image';
 
@@ -406,26 +407,87 @@ export default function SettingsScreen() {
   const handleTogglePush = useCallback(async (enabled: boolean) => {
     if (!deviceId) return;
     let token = pushToken;
-    if (enabled && !token) {
+
+    if (enabled) {
       setRegistering(true);
       try {
-        const result: PushRegistrationResult = await registerForPushNotificationsAsync();
-        if (result.token) {
-          token = result.token;
-          await AsyncStorage.setItem(PUSH_TOKEN_KEY, token);
-          setPushToken(token);
-        } else {
-          Alert.alert('اطلاعات دستیاب نہیں', result.error ?? 'Unknown error');
+        // Step 1: check current OS permission status
+        const { status: currentStatus } = await Notifications.getPermissionsAsync();
+
+        if (currentStatus === 'denied') {
+          // Permission was permanently denied — send user to phone Settings
           setRegistering(false);
+          Alert.alert(
+            language === 'ur' ? 'اطلاعات بند ہیں' : language === 'ar' ? 'الإشعارات محظورة' : 'Notifications Blocked',
+            language === 'ur'
+              ? 'آپ نے پہلے اطلاعات بند کر دی تھیں۔ فون کی سیٹنگز میں جا کر اطلاعات آن کریں۔'
+              : language === 'ar'
+              ? 'لقد حظرت الإشعارات سابقاً. افتح إعدادات الهاتف لتفعيلها.'
+              : 'You previously blocked notifications. Open phone Settings to enable them.',
+            [
+              { text: language === 'ur' ? 'منسوخ' : language === 'ar' ? 'إلغاء' : 'Cancel', style: 'cancel' },
+              {
+                text: language === 'ur' ? 'سیٹنگز کھولیں' : language === 'ar' ? 'فتح الإعدادات' : 'Open Settings',
+                onPress: () => Linking.openSettings(),
+              },
+            ],
+          );
           return;
         }
+
+        if (currentStatus !== 'granted') {
+          // Not yet asked — request OS permission dialog
+          const { status: newStatus } = await Notifications.requestPermissionsAsync({
+            android: {},
+            ios: { allowAlert: true, allowBadge: true, allowSound: true },
+          });
+          if (newStatus !== 'granted') {
+            Alert.alert(
+              language === 'ur' ? 'اجازت نہیں ملی' : language === 'ar' ? 'لم يُمنح الإذن' : 'Permission Not Granted',
+              language === 'ur'
+                ? 'اطلاعات کے لیے اجازت ضروری ہے۔'
+                : language === 'ar'
+                ? 'مطلوب إذن لتفعيل الإشعارات.'
+                : 'Permission is required to enable notifications.',
+            );
+            setRegistering(false);
+            return;
+          }
+        }
+
+        // Permission is granted — get/refresh push token
+        if (!token) {
+          // Fresh registration
+          const result: PushRegistrationResult = await registerForPushNotificationsAsync();
+          if (result.token) {
+            token = result.token;
+            await AsyncStorage.setItem(PUSH_TOKEN_KEY, token);
+            setPushToken(token);
+          } else {
+            // Try a full refresh (clears cache, fetches new token)
+            await refreshPushToken();
+            const refreshed = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
+            if (refreshed) {
+              token = refreshed;
+              setPushToken(token);
+            } else {
+              Alert.alert(
+                language === 'ur' ? 'خرابی' : language === 'ar' ? 'خطأ' : 'Error',
+                result.error ?? 'Could not obtain push token.',
+              );
+              setRegistering(false);
+              return;
+            }
+          }
+        }
       } catch (err) {
-        Alert.alert('اطلاعات دستیاب نہیں', err instanceof Error ? err.message : String(err));
+        Alert.alert('خرابی', err instanceof Error ? err.message : String(err));
         setRegistering(false);
         return;
       }
       setRegistering(false);
     }
+
     upsertMutation.mutate({
       data: {
         deviceId,
@@ -434,7 +496,7 @@ export default function SettingsScreen() {
         ...(token ? { pushToken: token } : {}),
       },
     });
-  }, [deviceId, prefs, pushToken, upsertMutation]);
+  }, [deviceId, language, prefs, pushToken, upsertMutation]);
 
   const isNotifEnabled = prefs?.notificationsEnabled ?? false;
 
