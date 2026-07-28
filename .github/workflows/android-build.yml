@@ -1,0 +1,240 @@
+name: Android APK Build (Direct — No EAS)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Builds an Android APK directly on GitHub Actions using Expo Prebuild + Gradle.
+# No EAS account, no quota limits, completely free.
+#
+# Required GitHub Secrets:
+#   EXPO_PUBLIC_SUPABASE_ANON_KEY  — Supabase anon key
+#
+# Optional (for consistent release signing across builds):
+#   ANDROID_KEYSTORE_BASE64        — base64 of your .keystore file
+#   ANDROID_KEY_ALIAS              — key alias (default: digitalxnews)
+#   ANDROID_KEY_PASSWORD           — key password
+#   ANDROID_STORE_PASSWORD         — store password
+#   GOOGLE_SERVICES_JSON           — full content of google-services.json (for FCM)
+# ──────────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type'
+        required: false
+        default: 'release'
+        type: choice
+        options: [release, debug]
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: "https://qyrkrmxggorpbcbjxihp.supabase.co"
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS || 'digitalxnews' }}
+      KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD || 'DigitalXNews2024!' }}
+      STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD || 'DigitalXNews2024!' }}
+      BUILD_TYPE: ${{ github.event.inputs.build_type || 'release' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up pnpm 10
+        uses: pnpm/action-setup@v3
+        with:
+          version: 10
+
+      - name: Get pnpm store path
+        id: pnpm-store
+        run: echo "dir=$(pnpm store path)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.dir }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses || true
+
+      - name: Cache Gradle files
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      # ── google-services.json ─────────────────────────────────────────────────
+      - name: Set up google-services.json
+        working-directory: artifacts/islamnashra
+        run: |
+          if [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
+            echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > google-services.json
+            echo "✅ Loaded google-services.json from secret"
+          else
+            cat > google-services.json <<'EOF'
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "digitalxnews-placeholder",
+              "storage_bucket": "digitalxnews-placeholder.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000",
+                  "android_client_info": { "package_name": "com.digitalxnews.islamnashra" }
+                },
+                "oauth_client": [],
+                "api_key": [{"current_key": "placeholder"}],
+                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
+            echo "⚠️ Using placeholder google-services.json (FCM push needs real file)"
+          fi
+
+      # ── Expo Prebuild ────────────────────────────────────────────────────────
+      - name: Run expo prebuild (Android)
+        working-directory: artifacts/islamnashra
+        run: |
+          npx expo prebuild \
+            --platform android \
+            --non-interactive \
+            --clean
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ env.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ env.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+
+      # ── Keystore ─────────────────────────────────────────────────────────────
+      - name: Set up Android signing keystore
+        working-directory: artifacts/islamnashra
+        run: |
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > release.keystore
+            echo "✅ Keystore loaded from ANDROID_KEYSTORE_BASE64 secret"
+          else
+            echo "⚠️ Auto-generating keystore (add ANDROID_KEYSTORE_BASE64 secret for consistent signing)"
+            keytool -genkey -v \
+              -keystore release.keystore \
+              -alias "$KEY_ALIAS" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$STORE_PASSWORD" \
+              -keypass "$KEY_PASSWORD" \
+              -dname "CN=DigitalXNews,OU=Mobile,O=DigitalXNews,L=Islamabad,ST=Punjab,C=PK"
+          fi
+
+      # ── Inject signing into Gradle ────────────────────────────────────────────
+      - name: Configure Gradle signing
+        working-directory: artifacts/islamnashra/android
+        run: |
+          cat > keystore.properties <<EOF
+          storeFile=../release.keystore
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+          echo "✅ keystore.properties written"
+
+          # Patch app/build.gradle to read keystore.properties
+          GRADLE="app/build.gradle"
+          if ! grep -q "keystoreProperties" "$GRADLE"; then
+            # Insert properties reader before android block
+            sed -i 's/^android {/def keystorePropertiesFile = rootProject.file("keystore.properties")\ndef keystoreProperties = new Properties()\nif (keystorePropertiesFile.exists()) { keystoreProperties.load(new FileInputStream(keystorePropertiesFile)) }\n\nandroid {/' "$GRADLE"
+
+            # Insert signingConfigs inside android block
+            sed -i '/^android {/a\    signingConfigs {\n        release {\n            if (keystoreProperties["storeFile"]) {\n                storeFile file(keystoreProperties["storeFile"])\n                storePassword keystoreProperties["storePassword"]\n                keyAlias keystoreProperties["keyAlias"]\n                keyPassword keystoreProperties["keyPassword"]\n            }\n        }\n    }' "$GRADLE"
+
+            # Set release buildType to use release signingConfig
+            sed -i '/buildTypes {/{n;/release {/a\            signingConfig signingConfigs.release\n            minifyEnabled true\n            shrinkResources true}' "$GRADLE" || true
+
+            echo "✅ app/build.gradle patched with signingConfig"
+          else
+            echo "ℹ️ app/build.gradle already has keystoreProperties"
+          fi
+
+      # ── Build APK ────────────────────────────────────────────────────────────
+      - name: Build Android APK
+        working-directory: artifacts/islamnashra/android
+        run: |
+          chmod +x gradlew
+
+          if [ "$BUILD_TYPE" = "debug" ]; then
+            ./gradlew assembleDebug --no-daemon \
+              -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=512m"
+            APK=$(find . -name "app-debug.apk" | head -1)
+          else
+            ./gradlew assembleRelease --no-daemon \
+              -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=512m"
+            APK=$(find . -name "app-release*.apk" | head -1)
+          fi
+
+          [ -z "$APK" ] && { echo "::error::APK not found!"; find . -name "*.apk"; exit 1; }
+
+          echo "✅ APK: $APK ($(du -sh "$APK" | cut -f1))"
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+          echo "APK_SIZE=$(du -sh "$APK" | cut -f1)" >> "$GITHUB_ENV"
+
+      # ── Upload artifact ──────────────────────────────────────────────────────
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DigitalXNews-${{ env.BUILD_TYPE }}-${{ github.sha }}
+          path: artifacts/islamnashra/android/${{ env.APK_PATH }}
+          retention-days: 30
+          if-no-files-found: error
+
+      # ── Summary ──────────────────────────────────────────────────────────────
+      - name: Build summary
+        if: always()
+        run: |
+          SHORT="${{ github.sha }}"
+          SHORT="${SHORT:0:7}"
+          {
+            echo "## ✅ Android APK Build"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Build type | \`${{ env.BUILD_TYPE }}\` |"
+            echo "| APK size | ${{ env.APK_SIZE }} |"
+            echo "| Commit | \`$SHORT\` |"
+            echo ""
+            echo "### 📥 Download"
+            echo "**Artifacts** سیکشن میں جائیں → APK ڈاؤنلوڈ کریں"
+            echo ""
+            echo "### 📱 Android پر Install"
+            echo "1. APK phone میں transfer کریں"
+            echo "2. Settings → Security → Unknown Sources → Allow"
+            echo "3. APK پر tap کریں → Install"
+          } >> "$GITHUB_STEP_SUMMARY"
