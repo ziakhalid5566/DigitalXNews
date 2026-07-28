@@ -145,7 +145,7 @@ const STRINGS = {
 const LEGAL_CONTENT = {
   terms: {
     title: { ur: 'شرائط و ضوابط', ar: 'الشروط والأحكام', en: 'Terms & Conditions' },
-    body: { ur: `اسلام نشرہ میں خوش آمدید۔ اس ایپ کا استعمال کر کے آپ درج ذیل شرائط سے متفق ہیں:
+    body: { ur: `DigitalXNews میں خوش آمدید۔ اس ایپ کا استعمال کر کے آپ درج ذیل شرائط سے متفق ہیں:
 
 1. تمام خبری مواد معلوماتی مقاصد کے لیے ہے۔ کوئی بھی اہم فیصلہ کرنے سے پہلے اصل ذرائع سے تصدیق کریں۔
 
@@ -156,7 +156,7 @@ const LEGAL_CONTENT = {
 4. یہ ایپ صرف قانونی اور اخلاقی مقاصد کے لیے استعمال کی جا سکتی ہے۔
 
 5. ہم وقتاً فوقتاً یہ شرائط اپ ڈیٹ کر سکتے ہیں۔`,
-    en: `Welcome to Islam Nashra. By using this app, you agree to these terms:
+    en: `Welcome to DigitalXNews. By using this app, you agree to these terms:
 
 1. All news content is for informational purposes only. Verify with primary sources before making important decisions.
 
@@ -219,14 +219,14 @@ const LEGAL_CONTENT = {
   },
   about: {
     title: { ur: 'ہمارے بارے میں', ar: 'من نحن', en: 'About Us' },
-    body: { ur: `اسلام نشرہ ایک اسلامی خبروں کی ایپ ہے جو دنیا بھر کے مسلمانوں کو اہم اسلامی خبریں فراہم کرتی ہے۔
+    body: { ur: `DigitalXNews ایک اسلامی خبروں کی ایپ ہے جو دنیا بھر کے مسلمانوں کو اہم اسلامی خبریں فراہم کرتی ہے۔
 
 ہماری خبریں دنیا کے مختلف خطوں سے آتی ہیں — مشرق وسطیٰ، جنوبی ایشیا، افریقہ، اور مغربی دنیا میں مسلم کمیونٹیز سے متعلق تازہ ترین واقعات۔
 
 ہم تین زبانوں میں خبریں فراہم کرتے ہیں: اردو، عربی، اور انگریزی۔
 
 ہمارا مقصد مسلم دنیا میں ہونے والے واقعات سے آگاہی فراہم کرنا ہے — مساجد، مدارس، علماء، اور امت مسلمہ کی خبریں۔`,
-    en: `Islam Nashra is an Islamic news app delivering important news from the Muslim world to readers worldwide.
+    en: `DigitalXNews is an Islamic news app delivering important news from the Muslim world to readers worldwide.
 
 Our news covers events from across the globe — the Middle East, South Asia, Africa, Turkey, Southeast Asia, and Muslim communities in the West.
 
@@ -246,7 +246,7 @@ Our mission is to keep the Muslim community informed about events that matter �
     title: { ur: 'ہم سے رابطہ کریں', ar: 'اتصل بنا', en: 'Contact Us' },
     body: { ur: `ہم سے رابطہ کرنے کے لیے:
 
-📧 ای میل: support@islamnashra.com
+📧 ای میل: support@digitalxnews.app
 
 📱 ہمیں اپنے تاثرات سے آگاہ کریں — ہم ہر رائے کو قدر کی نگاہ سے دیکھتے ہیں۔
 
@@ -258,7 +258,7 @@ Our mission is to keep the Muslim community informed about events that matter �
 ہم 2-3 کاروباری دنوں میں جواب دیتے ہیں۔`,
     en: `Get in touch with us:
 
-📧 Email: support@islamnashra.com
+📧 Email: support@digitalxnews.app
 
 📱 We value your feedback — every message is read carefully.
 
@@ -270,7 +270,7 @@ Our mission is to keep the Muslim community informed about events that matter �
 We respond within 2-3 business days.`,
     ar: `تواصل معنا:
 
-📧 البريد الإلكتروني: support@islamnashra.com
+📧 البريد الإلكتروني: support@digitalxnews.app
 
 📱 نحن نقدر ملاحظاتك — كل رسالة تُقرأ بعناية.
 
@@ -504,22 +504,22 @@ export default function SettingsScreen() {
     try {
       await Share.share({
         message: language === 'ur'
-          ? 'اسلام نشرہ ایپ ڈاؤن لوڈ کریں — دنیا بھر کی اسلامی خبریں اردو، عربی اور انگریزی میں!\nhttps://islamnashra.com'
+          ? 'DigitalXNews ایپ ڈاؤن لوڈ کریں — دنیا بھر کی اسلامی خبریں اردو، عربی اور انگریزی میں!\nhttps://digitalxnews.app'
           : language === 'ar'
-          ? 'حمّل تطبيق إسلام نشرة — أخبار إسلامية من حول العالم بالأردية والعربية والإنجليزية!\nhttps://islamnashra.com'
-          : 'Download Islam Nashra — Islamic news from around the world in Urdu, Arabic & English!\nhttps://islamnashra.com',
+          ? 'حمّل تطبيق DigitalXNews — أخبار إسلامية من حول العالم بالأردية والعربية والإنجليزية!\nhttps://digitalxnews.app'
+          : 'Download DigitalXNews — Islamic news from around the world in Urdu, Arabic & English!\nhttps://digitalxnews.app',
       });
     } catch {}
   };
 
   const handleFeedback = () => {
-    Linking.openURL('mailto:support@islamnashra.com?subject=Islam Nashra Feedback');
+    Linking.openURL('mailto:support@digitalxnews.app?subject=DigitalXNews Feedback');
   };
 
   const handleRateApp = () => {
     // Opens Play Store rating page
-    Linking.openURL('market://details?id=com.digitalxnews.islamnashra').catch(() =>
-      Linking.openURL('https://play.google.com/store/apps/details?id=com.digitalxnews.islamnashra')
+    Linking.openURL('market://details?id=com.digitalxnews.app').catch(() =>
+      Linking.openURL('https://play.google.com/store/apps/details?id=com.digitalxnews.app')
     );
   };
 
@@ -558,7 +558,7 @@ export default function SettingsScreen() {
             </View>
             <View style={[ss.profileText, isRTL && ss.profileTextRTL]}>
               <Text style={[ss.profileName, { color: colors.cardForeground }, isRTL && ss.rtl]}>
-                اسلام نشرہ
+                DigitalXNews
               </Text>
               <Text style={[ss.profileSub, { color: colors.primary }]}>DigitalXNews</Text>
               <View style={[ss.versionBadge, { backgroundColor: colors.primary + '18' }]}>

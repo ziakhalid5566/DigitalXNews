@@ -15,17 +15,20 @@
 
 import { db } from "@workspace/db";
 import { postsTable, flaggedPostsTable } from "@workspace/db";
-import { generateNewsArticles } from "../lib/newsGenerator";
+import { generateNewsArticles, generateSingleAgentArticles, AGENT_COUNT } from "../lib/newsGenerator";
 import { moderateContent } from "../lib/contentModeration";
 import { fetchImage } from "../lib/imageProvider";
 import { sendPushNotifications } from "../lib/pushNotifications";
 import { logger } from "../lib/logger";
 
+// Re-export for the scheduler
+export { AGENT_COUNT } from "../lib/newsGenerator";
+
 // Daily image budget — Pexels free tier: 20,000/month → ~600/day safe
 const DAILY_IMAGE_BUDGET = 580;
 const IMAGE_SCORE_THRESHOLD = 1;
-// 72-hour TTL for all posts
-const POST_TTL_MS = 72 * 60 * 60 * 1000;
+// 24-hour TTL for all posts
+const POST_TTL_MS = 24 * 60 * 60 * 1000;
 
 // Categories that always trigger push notifications to all users
 const ALWAYS_NOTIFY_CATEGORIES = new Set([
@@ -289,5 +292,104 @@ async function notifySubscribers(
     );
   } catch (err) {
     logger.error({ err }, "Failed to send push notifications for post");
+  }
+}
+
+/**
+ * Run ONE specific agent (by index 0-7) and publish its articles.
+ * Called by the rotating 5-minute scheduler.
+ */
+export async function runSingleAgentJob(agentIndex: number): Promise<void> {
+  logger.info({ agentIndex }, "Single-agent job: starting");
+  try {
+    const articles = await generateSingleAgentArticles(agentIndex);
+    if (articles.length === 0) {
+      logger.warn({ agentIndex }, "Single-agent job: no articles generated");
+      return;
+    }
+
+    resetDailyCountIfNeeded();
+    const now = new Date();
+    let published = 0;
+    let flagged = 0;
+
+    for (const article of articles) {
+      // Content moderation
+      const mod = moderateContent(article.title_en, article.body_en);
+      if (mod.flagged) {
+        await db.insert(flaggedPostsTable).values({
+          title: article.title_en,
+          body: article.body_en,
+          category: article.category,
+          significanceScore: article.significanceScore,
+          sourceNote: article.sourceNote,
+          flagReason: mod.reason ?? "Content moderation",
+          flaggedAt: now,
+        });
+        flagged++;
+        logger.warn({ title: article.title_en, reason: mod.reason }, "Article flagged");
+        continue;
+      }
+
+      // Image fetch
+      let imageUrl: string | null = null;
+      let hasImage = false;
+      resetDailyCountIfNeeded();
+      if (dailyImageCount < DAILY_IMAGE_BUDGET && article.significanceScore >= IMAGE_SCORE_THRESHOLD) {
+        const img = await fetchImage(article.title_en, article.category);
+        if (img) {
+          imageUrl = img;
+          hasImage = true;
+          dailyImageCount++;
+        }
+      }
+
+      const expiresAt = new Date(now.getTime() + POST_TTL_MS);
+      const [post] = await db
+        .insert(postsTable)
+        .values({
+          title: article.title_en,
+          body: article.body_en,
+          category: article.category,
+          imageUrl,
+          hasImage,
+          significanceScore: article.significanceScore,
+          sourceNote: article.sourceNote,
+          publishedAt: now,
+          expiresAt,
+          isBreaking: article.isBreaking,
+          titleEn: article.title_en,
+          bodyEn: article.body_en,
+          titleUr: article.title_ur,
+          bodyUr: article.body_ur,
+          titleAr: article.title_ar,
+          bodyAr: article.body_ar,
+        })
+        .returning();
+
+      published++;
+      logger.info({ postId: post.id, category: post.category, agentIndex, hasImage }, "Post published");
+
+      const shouldNotify =
+        post.isBreaking ||
+        ALWAYS_NOTIFY_CATEGORIES.has(post.category) ||
+        post.significanceScore >= 8;
+
+      if (shouldNotify) {
+        await notifySubscribers(
+          post.id,
+          post.title,
+          post.body ?? "",
+          post.category,
+          post.isBreaking ?? false,
+          post.titleUr ?? undefined,
+          post.bodyUr ?? undefined,
+        );
+      }
+    }
+
+    logger.info({ agentIndex, published, flagged }, "Single-agent job: completed");
+  } catch (err) {
+    logger.error({ err, agentIndex }, "Single-agent job: failed");
   }
 }

@@ -53,8 +53,8 @@ export async function getOrCreateDeviceId(): Promise<string> {
 async function setupAndroidChannel(): Promise<void> {
   if (Platform.OS !== 'android') return;
   await Notifications.setNotificationChannelAsync('default', {
-    name: 'Islam Nashra',
-    description: 'اسلامی خبریں اور بریکنگ نیوز',
+    name: 'DigitalXNews',
+    description: 'اسلامی خبریں اور بریکنگ نیوز — DigitalXNews',
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
     lightColor: '#1565C0',

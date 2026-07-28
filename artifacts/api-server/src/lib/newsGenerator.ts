@@ -159,6 +159,11 @@ ABSOLUTE RULES — never violate:
 5. Write professionally and neutrally; respect all Muslims regardless of sect or nationality
 6. isBreaking: true ONLY for significanceScore >= 9
 7. sourceNote: MUST be a real-sounding news agency (e.g. "Al Jazeera", "Dawn News", "Reuters")
+8. NEVER mention AI, algorithms, machine learning, or automated generation anywhere in the content
+9. NEVER add disclaimers like "as reported by AI", "AI analysis", "this is AI-generated", "based on AI research"
+10. Write EXACTLY as a professional human journalist would — factual, confident, authoritative
+11. Do NOT write "according to sources", "unverified reports", or any hedging that implies fabrication
+12. Every article must read as a legitimate professional news report — no meta-commentary about the content
 
 URDU RULES — PRIMARY GOAL: Write 90%+ in authentic Urdu script (نستعلیق):
 - Every sentence must end with Urdu punctuation (۔) and be grammatically complete.
@@ -392,10 +397,28 @@ async function generateAgentArticlesSafe(
 
 // ─── Main Export ──────────────────────────────────────────────────────────────
 
+/** Total number of agents available for rotation */
+export const AGENT_COUNT = AGENTS.length;
+
+/**
+ * Run a SINGLE agent by index (0 to AGENT_COUNT-1) and return its articles.
+ * Used by the rotating 5-minute scheduler.
+ */
+export async function generateSingleAgentArticles(agentIndex: number): Promise<GeneratedArticle[]> {
+  const agent = AGENTS[agentIndex % AGENTS.length];
+  if (!agent) {
+    throw new Error(\`Invalid agent index: \${agentIndex}\`);
+  }
+  logger.info({ agent: agent.name, agentIndex }, "Single agent starting");
+  const articles = await generateAgentArticlesSafe(agent);
+  logger.info({ agent: agent.name, count: articles.length }, "Single agent completed");
+  return articles;
+}
+
 /**
  * Run all 8 specialized agents to generate Islamic news articles.
  * Uses Gemini 2.0 Flash Lite (cheapest Gemini model — nearly free).
- * Agents run with 2.5s gaps to respect the 30 RPM free-tier limit.
+ * Kept for the manual admin trigger endpoint.
  */
 export async function generateNewsArticles(): Promise<GeneratedArticle[]> {
   logger.info(

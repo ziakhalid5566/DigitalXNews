@@ -174,7 +174,7 @@ export default function PostDetailScreen() {
     if (!post || !localized) return;
     try {
       await Share.share({
-        message: `${localized.title}\n\n${localized.body}\n\nاسلام نشرہ پر مزید پڑھیں — https://islamnashra.com`,
+        message: `${localized.title}\n\n${localized.body}\n\nDigitalXNews پر مزید پڑھیں — https://digitalxnews.app`,
         title: localized.title,
       });
     } catch (error) {
@@ -248,7 +248,7 @@ export default function PostDetailScreen() {
                 </View>
               )}
             </View>
-            <Text style={[styles.aiLabel, { color: colors.mutedForeground }]}>Islam Nashra</Text>
+            <Text style={[styles.aiLabel, { color: colors.mutedForeground }]}>DigitalXNews</Text>
           </View>
 
           <Text style={[styles.title, { color: colors.foreground }, isRtl && styles.rtlText]}>
@@ -293,9 +293,13 @@ export default function PostDetailScreen() {
           )}
 
           <View style={[styles.disclaimerBox, { backgroundColor: colors.muted }]}>
-            <Ionicons name="information-circle" size={20} color={colors.mutedForeground} />
+            <Ionicons name="newspaper-outline" size={20} color={colors.mutedForeground} />
             <Text style={[styles.disclaimerText, { color: colors.mutedForeground }]}>
-              Islam Nashra — یہ خبر عالمی اسلامی ذرائع سے جمع کی گئی ہے۔ اہم فیصلوں سے پہلے اصل ذرائع سے تصدیق کریں۔
+              {language === 'ur'
+                ? 'DigitalXNews — عالمی اسلامی خبریں، تازہ اور بروقت'
+                : language === 'ar'
+                ? 'DigitalXNews — أخبار إسلامية عالمية، حديثة وفي حينها'
+                : 'DigitalXNews — Global Islamic news, current and timely'}
             </Text>
           </View>
         </View>
