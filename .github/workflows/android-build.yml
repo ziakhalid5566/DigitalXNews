@@ -128,6 +128,35 @@ jobs:
             echo "Using placeholder google-services.json (add GOOGLE_SERVICES_JSON secret for FCM)"
           fi
 
+      # ── Fix Babel pnpm resolution ─────────────────────────────────────────────
+      # In pnpm workspaces each package only gets its direct deps in node_modules.
+      # Babel resolves presets relative to babel.config.js, so babel-preset-expo
+      # (a transitive dep) is not visible to it even though pnpm installed it.
+      # Solution: symlink the already-installed packages into the local node_modules.
+      - name: Fix Babel preset resolution for pnpm workspace
+        run: |
+          PKG_DIR="artifacts/islamnashra/node_modules"
+          mkdir -p "$PKG_DIR"
+
+          # Find babel-preset-expo in pnpm virtual store and symlink it
+          for PKG in babel-preset-expo @babel/plugin-transform-react-jsx-source; do
+            if [ ! -e "$PKG_DIR/$PKG" ]; then
+              FOUND=$(find node_modules/.pnpm -maxdepth 3 -type d -name "$PKG" 2>/dev/null | \
+                grep "/node_modules/${PKG}$" | head -1)
+              if [ -n "$FOUND" ]; then
+                # Preserve @scope/ directory structure
+                SCOPE_DIR=$(dirname "$PKG_DIR/$PKG")
+                mkdir -p "$SCOPE_DIR"
+                ln -sf "$(realpath "$FOUND")" "$PKG_DIR/$PKG"
+                echo "Symlinked $PKG → $FOUND"
+              else
+                echo "WARNING: $PKG not found in pnpm store (may be optional)"
+              fi
+            else
+              echo "$PKG already present in node_modules"
+            fi
+          done
+
       # ── Expo Prebuild ────────────────────────────────────────────────────────
       # KEY FIX for Expo 54:
       #   - EXPO_NO_DEPENDENCY_UPDATE=1  → stops "Install updated packages?" prompt
