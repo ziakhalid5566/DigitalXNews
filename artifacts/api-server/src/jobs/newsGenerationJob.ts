@@ -5,31 +5,36 @@
  * 1. Runs all 8 Gemini AI agents
  * 2. Content moderation
  * 3. Image fetching via Pexels for all articles
- * 4. Database insertion
- * 5. Push notifications for:
- *    - Breaking news → ALL users
- *    - Security, Government, Mosques, Madrassas → all users with notifications enabled
- *    - High significance (score >= 8) → all users with notifications enabled
+ * 4. Database insertion (Drizzle → Supabase PostgreSQL)
+ * 5. Push notifications via Expo Push Service
+ *
+ * Push token source: Supabase REST API (service role key).
+ * Tokens are stored by the Expo mobile app directly into Supabase.
+ * Using the REST API avoids needing a direct DB password.
  */
 
 import { db } from "@workspace/db";
-import { postsTable, flaggedPostsTable, userPreferencesTable } from "@workspace/db";
+import { postsTable, flaggedPostsTable } from "@workspace/db";
 import { generateNewsArticles } from "../lib/newsGenerator";
 import { moderateContent } from "../lib/contentModeration";
 import { fetchImage } from "../lib/imageProvider";
 import { sendPushNotifications } from "../lib/pushNotifications";
 import { logger } from "../lib/logger";
-import { eq } from "drizzle-orm";
 
-// Daily image budget — Pexels free tier: 20,000/month → 600/day safe
+// Daily image budget — Pexels free tier: 20,000/month → ~600/day safe
 const DAILY_IMAGE_BUDGET = 580;
-// Fetch images for ALL articles
 const IMAGE_SCORE_THRESHOLD = 1;
 // 72-hour TTL for all posts
 const POST_TTL_MS = 72 * 60 * 60 * 1000;
 
 // Categories that always trigger push notifications to all users
-const ALWAYS_NOTIFY_CATEGORIES = new Set(["Security", "Government", "Mosques", "Madrassas", "Palestine"]);
+const ALWAYS_NOTIFY_CATEGORIES = new Set([
+  "Security",
+  "Government",
+  "Mosques",
+  "Madrassas",
+  "Palestine",
+]);
 
 let dailyImageCount = 0;
 let imageCountDate = new Date().toDateString();
@@ -42,6 +47,78 @@ function resetDailyCountIfNeeded(): void {
     logger.info("Daily image count reset for new UTC day");
   }
 }
+
+// ── Supabase push-token fetcher ────────────────────────────────────────────────
+// The Expo app saves push tokens directly to Supabase via the JS SDK.
+// We read them here using the service role key so we can reach ALL users,
+// regardless of which PostgreSQL the Drizzle DB instance points to.
+
+interface SupabasePref {
+  push_token: string | null;
+  notifications_enabled: boolean;
+  followed_categories: string[] | null;
+}
+
+async function fetchPushTokensFromSupabase(
+  category: string,
+  isBreaking: boolean,
+): Promise<string[]> {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    logger.warn(
+      "SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set — skipping push notifications",
+    );
+    return [];
+  }
+
+  try {
+    const url =
+      `${supabaseUrl}/rest/v1/user_preferences` +
+      `?select=push_token,notifications_enabled,followed_categories` +
+      `&notifications_enabled=eq.true` +
+      `&push_token=not.is.null`;
+
+    const res = await fetch(url, {
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+    });
+
+    if (!res.ok) {
+      logger.warn({ status: res.status }, "Supabase push token fetch failed");
+      return [];
+    }
+
+    const rows: SupabasePref[] = (await res.json()) as SupabasePref[];
+
+    const tokens = rows
+      .filter((p) => {
+        if (!p.push_token) return false;
+        if (isBreaking || ALWAYS_NOTIFY_CATEGORIES.has(category)) return true;
+        const cats = p.followed_categories ?? [];
+        if (cats.length === 0) return true;
+        return cats.includes(category);
+      })
+      .map((p) => p.push_token as string);
+
+    logger.info(
+      { total: rows.length, eligible: tokens.length, category, isBreaking },
+      "Push tokens fetched from Supabase",
+    );
+
+    return tokens;
+  } catch (err) {
+    logger.error({ err }, "Error fetching push tokens from Supabase");
+    return [];
+  }
+}
+
+// ── Main export ────────────────────────────────────────────────────────────────
 
 export async function runNewsGenerationJob(): Promise<void> {
   logger.info("News generation job: starting (Gemini multi-agent)");
@@ -63,7 +140,7 @@ export async function runNewsGenerationJob(): Promise<void> {
     let flagged = 0;
 
     for (const article of sorted) {
-      // Run content moderation using English title + body
+      // Content moderation — checks English title + body
       const mod = moderateContent(article.title_en, article.body_en);
 
       if (mod.flagged) {
@@ -139,11 +216,7 @@ export async function runNewsGenerationJob(): Promise<void> {
         "Post published",
       );
 
-      // ── Push notification logic ────────────────────────────────────────────
-      // Send notifications for:
-      //   • Breaking news → all users with notifications enabled
-      //   • Security / Government / Mosques / Madrassas / Palestine → all users
-      //   • High significance (>=8) → all users
+      // Decide whether to push-notify for this article
       const shouldNotify =
         post.isBreaking ||
         ALWAYS_NOTIFY_CATEGORIES.has(post.category) ||
@@ -178,43 +251,42 @@ async function notifySubscribers(
   bodyUr?: string,
 ): Promise<void> {
   try {
-    const prefs = await db
-      .select()
-      .from(userPreferencesTable)
-      .where(eq(userPreferencesTable.notificationsEnabled, true));
+    // Fetch tokens from Supabase (where the mobile app stores them)
+    const tokens = await fetchPushTokensFromSupabase(category, isBreaking);
 
-    const tokens = prefs
-      .filter((p) => {
-        if (!p.pushToken) return false;
-        // Breaking news OR always-notify categories → notify EVERYONE with notifications on
-        if (isBreaking || ALWAYS_NOTIFY_CATEGORIES.has(category)) return true;
-        // Other categories: respect followed_categories (empty means "all")
-        if (p.followedCategories.length === 0) return true;
-        return p.followedCategories.includes(category);
-      })
-      .map((p) => p.pushToken as string);
+    if (tokens.length === 0) {
+      logger.info({ category, isBreaking }, "No eligible push tokens — skipping notification");
+      return;
+    }
 
-    if (tokens.length === 0) return;
+    // Prefer Urdu for notification display
+    const displayTitle = titleUr?.trim() ? titleUr : title;
+    const displayBody = bodyUr?.trim() ? bodyUr : body;
 
-    // Prefer Urdu for notification title/body
-    const displayTitle = (titleUr && titleUr.trim()) ? titleUr : title;
-    const displayBody  = (bodyUr  && bodyUr.trim())  ? bodyUr  : body;
-
-    // Category-specific notification prefix
+    // Category prefix emoji
     const prefix = isBreaking
       ? "🔴 بریکنگ:"
-      : category === "Security" ? "🛡️ سیکیورٹی:"
-      : category === "Government" ? "🏛️ حکومت:"
-      : category === "Mosques" ? "🕌 مساجد:"
-      : category === "Madrassas" ? "🎓 مدارس:"
-      : category === "Palestine" ? "🇵🇸 فلسطین:"
-      : "📰";
+      : category === "Security"
+        ? "🛡️ سیکیورٹی:"
+        : category === "Government"
+          ? "🏛️ حکومت:"
+          : category === "Mosques"
+            ? "🕌 مساجد:"
+            : category === "Madrassas"
+              ? "🎓 مدارس:"
+              : category === "Palestine"
+                ? "🇵🇸 فلسطین:"
+                : "📰";
 
     const notifTitle = `${prefix} ${displayTitle}`;
-    const notifBody = displayBody.substring(0, 120) + (displayBody.length > 120 ? "…" : "");
+    const notifBody =
+      displayBody.substring(0, 120) + (displayBody.length > 120 ? "…" : "");
 
     await sendPushNotifications(tokens, notifTitle, notifBody, { postId });
-    logger.info({ tokenCount: tokens.length, category, isBreaking }, "Push notifications sent");
+    logger.info(
+      { tokenCount: tokens.length, category, isBreaking },
+      "Push notifications sent",
+    );
   } catch (err) {
     logger.error({ err }, "Failed to send push notifications for post");
   }
