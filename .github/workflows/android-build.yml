@@ -95,16 +95,22 @@ jobs:
           restore-keys: ${{ runner.os }}-gradle-
 
       # ── google-services.json ─────────────────────────────────────────────────
-      # Real google-services.json is committed to the repo (Firebase project: digitalxnews-8ffd0).
-      # FCM push notifications are fully enabled in all builds.
-      - name: Verify google-services.json
+      # If GOOGLE_SERVICES_JSON secret is set, it overwrites the placeholder file.
+      # This keeps the real Firebase API key OUT of the repository.
+      # Set it: GitHub repo → Settings → Secrets → GOOGLE_SERVICES_JSON
+      #   (paste the full JSON content as the secret value)
+      - name: Inject google-services.json
         working-directory: artifacts/islamnashra
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
-          if [ -f "google-services.json" ]; then
-            PROJECT=$(python3 -c "import json,sys; d=json.load(open('google-services.json')); print(d['project_info']['project_id'])" 2>/dev/null || echo "unknown")
-            echo "✓ google-services.json present — project: $PROJECT"
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            echo "$GOOGLE_SERVICES_JSON" > google-services.json
+            echo "ok: injected from secret"
+          elif [ -f "google-services.json" ]; then
+            echo "ok: using repo file (set GOOGLE_SERVICES_JSON secret for real FCM)"
           else
-            echo "::error::google-services.json is missing! FCM push notifications will not work."
+            echo "::error::missing google-services.json and no secret set!"
             exit 1
           fi
 

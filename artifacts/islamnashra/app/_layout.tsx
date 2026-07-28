@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
@@ -21,7 +21,7 @@ import { ThemeProvider } from '@/contexts/ThemeContext';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { SplashAnimation } from '@/components/SplashAnimation';
 
-// Foreground notification handler
+// Foreground notification handler — show alerts even when app is open
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -46,35 +46,53 @@ function RootLayoutNav() {
 }
 
 /**
- * Handles push notification registration on first launch.
- * Shows the native Android/iOS permission dialog once, on first open.
+ * Handles push notification registration.
+ * Permission is asked AFTER the splash animation finishes so the user
+ * sees the app UI first — this dramatically improves accept rates.
  */
-function AppWithPush() {
+function AppWithPush({ splashDone }: { splashDone: boolean }) {
   usePushNotifications();
+  const askedRef = useRef(false);
 
-  // Item 4: Show native notification permission dialog on very first launch
   useEffect(() => {
-    const ASKED_KEY = '@notif_permission_asked_v2';
+    // Only ask once, and only AFTER the splash is gone
+    if (!splashDone || askedRef.current) return;
+    askedRef.current = true;
+
+    const ASKED_KEY = '@notif_permission_asked_v3';
+
     (async () => {
       try {
-        const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+        const AsyncStorage = (
+          await import('@react-native-async-storage/async-storage')
+        ).default;
+
         const asked = await AsyncStorage.getItem(ASKED_KEY);
         if (asked) return;
-        // Mark immediately so we never double-show
-        await AsyncStorage.setItem(ASKED_KEY, '1');
-        // Wait for UI to settle before showing the dialog
-        await new Promise((r) => setTimeout(r, 1800));
+
+        // Small delay so the home feed is visible before the dialog appears
+        await new Promise<void>((r) => setTimeout(r, 800));
+
         const { status: existing } = await Notifications.getPermissionsAsync();
-        if (existing === 'granted') return;
+        if (existing === 'granted') {
+          // Already granted — mark so we never ask again and exit
+          await AsyncStorage.setItem(ASKED_KEY, '1');
+          return;
+        }
+
+        // Show the native OS permission dialog
         await Notifications.requestPermissionsAsync({
           android: {},
           ios: { allowAlert: true, allowBadge: true, allowSound: true },
         });
+
+        // Mark as asked regardless of outcome (don't spam the user)
+        await AsyncStorage.setItem(ASKED_KEY, '1');
       } catch {
-        // Silently ignore — non-critical
+        // Non-critical — silently ignore
       }
     })();
-  }, []);
+  }, [splashDone]);
 
   return (
     <GestureHandlerRootView>
@@ -94,6 +112,7 @@ export default function RootLayout() {
   });
 
   const [showSplash, setShowSplash] = useState(true);
+  const [splashDone, setSplashDone] = useState(false);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
@@ -103,6 +122,7 @@ export default function RootLayout() {
 
   const handleSplashDone = useCallback(() => {
     setShowSplash(false);
+    setSplashDone(true);
   }, []);
 
   if (!fontsLoaded && !fontError) return null;
@@ -114,7 +134,7 @@ export default function RootLayout() {
           <QueryClientProvider client={queryClient}>
             <LanguageProvider>
               <NotificationsProvider>
-                <AppWithPush />
+                <AppWithPush splashDone={splashDone} />
                 {showSplash && <SplashAnimation onDone={handleSplashDone} />}
               </NotificationsProvider>
             </LanguageProvider>
