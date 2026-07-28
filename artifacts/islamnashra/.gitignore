@@ -39,3 +39,6 @@ yarn-error.*
 .vercel
 
 .env
+
+# Firebase - use GOOGLE_SERVICES_JSON GitHub secret instead
+google-services.json
