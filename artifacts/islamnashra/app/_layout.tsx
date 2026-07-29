@@ -18,7 +18,7 @@ import * as Notifications from 'expo-notifications';
 import { LanguageProvider } from '@/contexts/LanguageContext';
 import { NotificationsProvider } from '@/contexts/NotificationsContext';
 import { ThemeProvider } from '@/contexts/ThemeContext';
-import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { usePushNotifications, refreshPushToken } from '@/hooks/usePushNotifications';
 import { SplashAnimation } from '@/components/SplashAnimation';
 
 // Foreground notification handler — show alerts even when app is open
@@ -81,13 +81,23 @@ function AppWithPush({ splashDone }: { splashDone: boolean }) {
         }
 
         // Show the native OS permission dialog
-        await Notifications.requestPermissionsAsync({
+        const { status: newStatus } = await Notifications.requestPermissionsAsync({
           android: {},
           ios: { allowAlert: true, allowBadge: true, allowSound: true },
         });
 
         // Mark as asked regardless of outcome (don't spam the user)
         await AsyncStorage.setItem(ASKED_KEY, '1');
+
+        // ── CRITICAL FIX ──────────────────────────────────────────────────────
+        // usePushNotifications() ran on mount — BEFORE permission was granted.
+        // It found no permission and returned without a token.
+        // Now that the user just granted permission, we must fetch the token
+        // immediately. Without this call, the token is only registered on the
+        // NEXT app launch, so the first session never receives push notifications.
+        if (newStatus === 'granted') {
+          void refreshPushToken();
+        }
       } catch {
         // Non-critical — silently ignore
       }

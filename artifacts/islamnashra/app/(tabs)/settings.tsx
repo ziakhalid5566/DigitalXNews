@@ -498,7 +498,8 @@ export default function SettingsScreen() {
     });
   }, [deviceId, language, prefs, pushToken, upsertMutation]);
 
-  const isNotifEnabled = prefs?.notificationsEnabled ?? false;
+  // DB default is true — show ON for new users who haven't saved prefs yet
+  const isNotifEnabled = prefs?.notificationsEnabled ?? true;
 
   const handleShareApp = async () => {
     try {
