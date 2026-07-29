@@ -237,6 +237,9 @@ importers:
       react:
         specifier: 19.1.0
         version: 19.1.0
+      react-compiler-runtime:
+        specifier: ^19.0.0-beta-8a03594-20241020
+        version: 19.0.0-beta-ebf51a3-20250411(react@19.1.0)
       react-native:
         specifier: 0.81.5
         version: 0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0)
@@ -279,7 +282,7 @@ importers:
         version: 1.3.3
       babel-preset-expo:
         specifier: ^12.0.0
-        version: 12.0.12(@babel/core@7.29.7)
+        version: 12.0.12(@babel/core@7.29.7)(react-compiler-runtime@19.0.0-beta-ebf51a3-20250411(react@19.1.0))
       expo-blur:
         specifier: ~15.0.8
         version: 15.0.8(expo@54.0.36)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -4998,6 +5001,11 @@ packages:
     resolution: {integrity: sha512-y3bGgqKj3QBdxLbLkomlohkvsA8gdAiUQlSBJnBhfn+BPxg4bc62d8TcBW15wavDfgexCgccckhcZvywyQYPOw==}
     hasBin: true
 
+  react-compiler-runtime@19.0.0-beta-ebf51a3-20250411:
+    resolution: {integrity: sha512-CetwBv7Wny+4Re6TZRPtVbNMx65CvLNDMkMp2KJ/pRmEc6WLPUoSSBuyY0bML9GPWiO/3LcWQ4iDGKitFU0qng==}
+    peerDependencies:
+      react: ^17.0.0 || ^18.0.0 || ^19.0.0 || ^0.0.0-experimental
+
   react-day-picker@9.14.0:
     resolution: {integrity: sha512-tBaoDWjPwe0M5pGrum4H0SR6Lyk+BO9oHnp9JbKpGKW2mlraNPgP9BMfsg5pWpwrssARmeqk7YBl2oXutZTaHA==}
     engines: {node: '>=18'}
@@ -9022,7 +9030,7 @@ snapshots:
       '@babel/plugin-syntax-private-property-in-object': 7.14.5(@babel/core@7.29.7)
       '@babel/plugin-syntax-top-level-await': 7.14.5(@babel/core@7.29.7)
 
-  babel-preset-expo@12.0.12(@babel/core@7.29.7):
+  babel-preset-expo@12.0.12(@babel/core@7.29.7)(react-compiler-runtime@19.0.0-beta-ebf51a3-20250411(react@19.1.0)):
     dependencies:
       '@babel/plugin-proposal-decorators': 7.29.7(@babel/core@7.29.7)
       '@babel/plugin-transform-export-namespace-from': 7.29.7(@babel/core@7.29.7)
@@ -9033,6 +9041,8 @@ snapshots:
       '@react-native/babel-preset': 0.76.9(@babel/core@7.29.7)
       babel-plugin-react-native-web: 0.19.13
       react-refresh: 0.14.2
+    optionalDependencies:
+      react-compiler-runtime: 19.0.0-beta-ebf51a3-20250411(react@19.1.0)
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'
@@ -11500,6 +11510,10 @@ snapshots:
       ini: 1.3.8
       minimist: 1.2.8
       strip-json-comments: 2.0.1
+
+  react-compiler-runtime@19.0.0-beta-ebf51a3-20250411(react@19.1.0):
+    dependencies:
+      react: 19.1.0
 
   react-day-picker@9.14.0(react@19.1.0):
     dependencies:
