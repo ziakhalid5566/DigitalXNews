@@ -277,12 +277,9 @@ importers:
       '@ungap/structured-clone':
         specifier: ^1.3.0
         version: 1.3.3
-      babel-plugin-react-compiler:
-        specifier: ^19.0.0-beta-e993439-20250117
-        version: 19.0.0-beta-ebf51a3-20250411
       babel-preset-expo:
         specifier: ^12.0.0
-        version: 12.0.12(@babel/core@7.29.7)(babel-plugin-react-compiler@19.0.0-beta-ebf51a3-20250411)
+        version: 12.0.12(@babel/core@7.29.7)
       expo-blur:
         specifier: ~15.0.8
         version: 15.0.8(expo@54.0.36)(react-native@0.81.5(@babel/core@7.29.7)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -2706,9 +2703,6 @@ packages:
 
   babel-plugin-react-compiler@1.0.0:
     resolution: {integrity: sha512-Ixm8tFfoKKIPYdCCKYTsqv+Fd4IJ0DQqMyEimo+pxUOMUR9cVPlwTrFt9Avu+3cb6Zp3mAzl+t1MrG2fxxKsxw==}
-
-  babel-plugin-react-compiler@19.0.0-beta-ebf51a3-20250411:
-    resolution: {integrity: sha512-q84bNR9JG1crykAlJUt5Ud0/5BUyMFuQww/mrwIQDFBaxsikqBDj3f/FNDsVd2iR26A1HvXKWPEIfgJDv8/V2g==}
 
   babel-plugin-react-native-web@0.19.13:
     resolution: {integrity: sha512-4hHoto6xaN23LCyZgL9LJZc3olmAxd7b6jDzlZnKXAh4rRAbZRKNBJoOOdp46OBqgy+K0t0guTj5/mhA8inymQ==}
@@ -8991,10 +8985,6 @@ snapshots:
     dependencies:
       '@babel/types': 7.29.7
 
-  babel-plugin-react-compiler@19.0.0-beta-ebf51a3-20250411:
-    dependencies:
-      '@babel/types': 7.29.7
-
   babel-plugin-react-native-web@0.19.13: {}
 
   babel-plugin-react-native-web@0.21.2: {}
@@ -9032,7 +9022,7 @@ snapshots:
       '@babel/plugin-syntax-private-property-in-object': 7.14.5(@babel/core@7.29.7)
       '@babel/plugin-syntax-top-level-await': 7.14.5(@babel/core@7.29.7)
 
-  babel-preset-expo@12.0.12(@babel/core@7.29.7)(babel-plugin-react-compiler@19.0.0-beta-ebf51a3-20250411):
+  babel-preset-expo@12.0.12(@babel/core@7.29.7):
     dependencies:
       '@babel/plugin-proposal-decorators': 7.29.7(@babel/core@7.29.7)
       '@babel/plugin-transform-export-namespace-from': 7.29.7(@babel/core@7.29.7)
@@ -9043,8 +9033,6 @@ snapshots:
       '@react-native/babel-preset': 0.76.9(@babel/core@7.29.7)
       babel-plugin-react-native-web: 0.19.13
       react-refresh: 0.14.2
-    optionalDependencies:
-      babel-plugin-react-compiler: 19.0.0-beta-ebf51a3-20250411
     transitivePeerDependencies:
       - '@babel/core'
       - '@babel/preset-env'

@@ -407,7 +407,7 @@ export const AGENT_COUNT = AGENTS.length;
 export async function generateSingleAgentArticles(agentIndex: number): Promise<GeneratedArticle[]> {
   const agent = AGENTS[agentIndex % AGENTS.length];
   if (!agent) {
-    throw new Error(\`Invalid agent index: \${agentIndex}\`);
+    throw new Error(`Invalid agent index: ${agentIndex}`);
   }
   logger.info({ agent: agent.name, agentIndex }, "Single agent starting");
   const articles = await generateAgentArticlesSafe(agent);
