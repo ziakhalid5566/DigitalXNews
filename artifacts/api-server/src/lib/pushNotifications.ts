@@ -23,8 +23,8 @@ async function removeStaleTokenFromSupabase(token: string): Promise<void> {
   try {
     await db
       .update(userPreferencesTable)
-      .set({ push_token: null })
-      .where(eq(userPreferencesTable.push_token, token));
+      .set({ pushToken: null })
+      .where(eq(userPreferencesTable.pushToken, token));
     logger.info({ token: token.slice(-8) }, "Stale push token removed");
   } catch (err) {
     logger.warn({ err }, "Error removing stale push token");

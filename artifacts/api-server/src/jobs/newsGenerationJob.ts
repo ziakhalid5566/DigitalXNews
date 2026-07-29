@@ -60,27 +60,27 @@ async function fetchPushTokensFromSupabase(
   try {
     const rows = await db
       .select({
-        push_token: userPreferencesTable.push_token,
-        notifications_enabled: userPreferencesTable.notifications_enabled,
-        followed_categories: userPreferencesTable.followed_categories,
+        pushToken: userPreferencesTable.pushToken,
+        notificationsEnabled: userPreferencesTable.notificationsEnabled,
+        followedCategories: userPreferencesTable.followedCategories,
       })
       .from(userPreferencesTable)
       .where(
         and(
-          isNotNull(userPreferencesTable.push_token),
+          isNotNull(userPreferencesTable.pushToken),
         )
       );
 
     const tokens = rows
       .filter((p) => {
-        if (!p.push_token) return false;
-        if (!p.notifications_enabled) return false;
+        if (!p.pushToken) return false;
+        if (!p.notificationsEnabled) return false;
         if (isBreaking || ALWAYS_NOTIFY_CATEGORIES.has(category)) return true;
-        const cats = (p.followed_categories as string[] | null) ?? [];
+        const cats = (p.followedCategories as string[] | null) ?? [];
         if (cats.length === 0) return true;
         return cats.includes(category);
       })
-      .map((p) => p.push_token as string);
+      .map((p) => p.pushToken as string);
 
     logger.info(
       { total: rows.length, eligible: tokens.length, category, isBreaking },
@@ -309,9 +309,9 @@ export async function runSingleAgentJob(agentIndex: number): Promise<void> {
       let hasImage = false;
       resetDailyCountIfNeeded();
       if (dailyImageCount < DAILY_IMAGE_BUDGET && article.significanceScore >= IMAGE_SCORE_THRESHOLD) {
-        const img = await fetchImage(article.title_en, article.category);
+        const img = await fetchImage({ titleEn: article.title_en, category: article.category });
         if (img) {
-          imageUrl = img;
+          imageUrl = img.url;
           hasImage = true;
           dailyImageCount++;
         }
