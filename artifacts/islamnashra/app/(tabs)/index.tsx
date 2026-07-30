@@ -1,6 +1,6 @@
 /**
- * Digital X News — Home Feed
- * X (Twitter) inspired design: clean black/white, X blue accents
+ * Digital X News — Home Feed (Facebook-style PostCards)
+ * Full-image cards, bold title, excerpt, engagement row
  */
 import { useState, useCallback } from 'react';
 import {
@@ -11,21 +11,20 @@ import {
   RefreshControl,
   ScrollView,
   Pressable,
-  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Link, useRouter } from 'expo-router';
+import { Link } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useColors } from '@/hooks/useColors';
 import { useListPosts } from '@/lib/api';
-import { NewsCard } from '@/components/NewsCard';
+import { PostCard } from '@/components/PostCard';
 import { SkeletonCard } from '@/components/SkeletonCard';
 import type { Post } from '@/lib/types';
 import { useLanguage, type Language } from '@/contexts/LanguageContext';
 import { useNotifications } from '@/contexts/NotificationsContext';
 
-// ─── Category config ──────────────────────────────────────────────────────────
+// ─── Categories ───────────────────────────────────────────────────────────────
 const CATEGORIES = [
   { key: 'All',            labelUr: 'سب',         labelAr: 'الكل',           labelEn: 'For You'        },
   { key: 'World',          labelUr: 'World',       labelAr: 'العالم',         labelEn: 'World'          },
@@ -49,7 +48,7 @@ function getCatLabel(cat: typeof CATEGORIES[0], lang: Language) {
   return cat.labelEn;
 }
 
-// ─── Digital X News Logo ──────────────────────────────────────────────────────
+// ─── Logo ─────────────────────────────────────────────────────────────────────
 function DXNLogo() {
   return (
     <View style={logo.wrap}>
@@ -78,14 +77,9 @@ const logo = StyleSheet.create({
 });
 
 // ─── Category Tab ─────────────────────────────────────────────────────────────
-function CatTab({
-  cat, lang, active, onPress, colors,
-}: {
-  cat: typeof CATEGORIES[0];
-  lang: Language;
-  active: boolean;
-  onPress: () => void;
-  colors: ReturnType<typeof useColors>;
+function CatTab({ cat, lang, active, onPress, colors }: {
+  cat: typeof CATEGORIES[0]; lang: Language; active: boolean;
+  onPress: () => void; colors: ReturnType<typeof useColors>;
 }) {
   return (
     <Pressable onPress={onPress} style={ct.wrap}>
@@ -102,46 +96,27 @@ const ct = StyleSheet.create({
   bar: { height: 3, borderRadius: 2, width: '100%', position: 'absolute', bottom: -1 },
 });
 
-// ─── Breaking banner ──────────────────────────────────────────────────────────
-function BreakingBanner({ posts, language, colors }: {
-  posts: Post[];
-  language: Language;
-  colors: ReturnType<typeof useColors>;
-}) {
-  if (posts.length === 0) return null;
-  const router = useRouter();
-  const post = posts[0]!;
-
-  const { title } = (() => {
-    if (language === 'ur' && post.titleUr) return { title: post.titleUr };
-    if (language === 'ar' && post.titleAr) return { title: post.titleAr };
-    if (language === 'en' && post.titleEn) return { title: post.titleEn };
-    return { title: post.title };
-  })();
-
+// ─── Skeleton for PostCard ─────────────────────────────────────────────────────
+function PostSkeleton({ colors }: { colors: ReturnType<typeof useColors> }) {
   return (
-    <Pressable
-      onPress={() => router.push(`/post/${post.id}`)}
-      style={[bb.wrap, { backgroundColor: colors.destructive + '12', borderColor: colors.destructive + '44', borderBottomColor: colors.divider }]}
-    >
-      <View style={bb.inner}>
-        <View style={[bb.liveTag, { backgroundColor: colors.destructive }]}>
-          <View style={bb.dot} />
-          <Text style={bb.liveTxt}>BREAKING</Text>
-        </View>
-        <Text style={[bb.title, { color: colors.foreground }]} numberOfLines={1}>{title}</Text>
-        <Ionicons name="chevron-forward" size={14} color={colors.destructive} />
+    <View style={[sk.wrap, { backgroundColor: colors.card, borderColor: colors.divider }]}>
+      <View style={[sk.img, { backgroundColor: colors.shimmer1 }]} />
+      <View style={sk.body}>
+        <View style={[sk.pill, { backgroundColor: colors.shimmer1 }]} />
+        <View style={[sk.line, { backgroundColor: colors.shimmer1, width: '90%' }]} />
+        <View style={[sk.line, { backgroundColor: colors.shimmer1, width: '75%' }]} />
+        <View style={[sk.lineShort, { backgroundColor: colors.shimmer1, width: '50%' }]} />
       </View>
-    </Pressable>
+    </View>
   );
 }
-const bb = StyleSheet.create({
-  wrap: { borderBottomWidth: StyleSheet.hairlineWidth, borderWidth: 0 },
-  inner: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 11 },
-  liveTag: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, flexShrink: 0 },
-  dot: { width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#fff' },
-  liveTxt: { fontSize: 10, fontFamily: 'Inter_700Bold', color: '#fff', letterSpacing: 0.6 },
-  title: { flex: 1, fontSize: 13, fontFamily: 'Inter_500Medium' },
+const sk = StyleSheet.create({
+  wrap: { marginHorizontal: 12, marginBottom: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
+  img: { height: 200 },
+  body: { padding: 14, gap: 10 },
+  pill: { height: 20, width: 80, borderRadius: 10 },
+  line: { height: 14, borderRadius: 6 },
+  lineShort: { height: 12, borderRadius: 6 },
 });
 
 // ─── Main Feed ─────────────────────────────────────────────────────────────────
@@ -151,97 +126,36 @@ export default function FeedScreen() {
   const { language } = useLanguage();
   const { unreadCount } = useNotifications();
   const [activeCategory, setActiveCategory] = useState('All');
-  const [page, setPage] = useState(1);
+  const isRTL = language === 'ur' || language === 'ar';
 
   const { data, isLoading, isError, refetch, isFetching } = useListPosts(
-    { category: activeCategory === 'All' ? undefined : activeCategory, limit: 40, page },
-    { query: { queryKey: ['posts', activeCategory, page] } }
+    { category: activeCategory === 'All' ? undefined : activeCategory, limit: 30, page: 1 },
+    { query: { queryKey: ['posts-feed', activeCategory] } }
   );
 
   const posts = data?.posts ?? [];
-  const breakingPosts = posts.filter((p) => p.isBreaking);
-  const isRTL = language === 'ur' || language === 'ar';
 
   const handleCategorySelect = useCallback((key: string) => {
     Haptics.selectionAsync();
     setActiveCategory(key);
-    setPage(1);
   }, []);
 
-  const renderItem = useCallback(({ item, index }: { item: Post; index: number }) => (
-    <NewsCard
-      post={item}
-      language={language}
-      isLast={index === posts.length - 1}
-    />
-  ), [language, posts.length]);
-
-  const ListHeader = (
-    <>
-      {/* Breaking banner */}
-      {breakingPosts.length > 0 && (
-        <BreakingBanner posts={breakingPosts} language={language} colors={colors} />
-      )}
-    </>
-  );
-
-  const EmptyComponent = (
-    <View style={[feed.emptyBox]}>
-      <Ionicons name="newspaper-outline" size={48} color={colors.mutedForeground} />
-      <Text style={[feed.emptyTitle, { color: colors.foreground }]}>
-        {language === 'ur' ? 'ابھی کوئی خبر نہیں' : language === 'ar' ? 'لا توجد أخبار' : 'No articles yet'}
-      </Text>
-      <Text style={[feed.emptySub, { color: colors.mutedForeground }]}>
-        {language === 'ur' ? 'تازہ کریں یا بعد میں آئیں' : language === 'ar' ? 'حاول التحديث لاحقاً' : 'Pull down to refresh or check back later'}
-      </Text>
-      <Pressable
-        onPress={() => refetch()}
-        style={[feed.retryBtn, { backgroundColor: colors.primary }]}
-      >
-        <Text style={{ fontSize: 14, color: '#fff', fontFamily: 'Inter_600SemiBold' }}>
-          {language === 'ur' ? 'تازہ کریں' : language === 'ar' ? 'تحديث' : 'Refresh'}
-        </Text>
-      </Pressable>
-    </View>
-  );
-
-  const ErrorComponent = (
-    <View style={feed.emptyBox}>
-      <Ionicons name="cloud-offline-outline" size={48} color={colors.mutedForeground} />
-      <Text style={[feed.emptyTitle, { color: colors.foreground }]}>
-        {language === 'ur' ? 'خبریں لوڈ نہیں ہوئیں' : language === 'ar' ? 'فشل تحميل الأخبار' : 'Could not load news'}
-      </Text>
-      <Pressable
-        onPress={() => refetch()}
-        style={[feed.retryBtn, { backgroundColor: colors.primary }]}
-      >
-        <Text style={{ fontSize: 14, color: '#fff', fontFamily: 'Inter_600SemiBold' }}>
-          {language === 'ur' ? 'دوبارہ کوشش' : language === 'ar' ? 'إعادة المحاولة' : 'Try again'}
-        </Text>
-      </Pressable>
-    </View>
-  );
+  const renderItem = useCallback(({ item }: { item: Post }) => (
+    <PostCard post={item} language={language} />
+  ), [language]);
 
   return (
     <View style={[feed.root, { backgroundColor: colors.background }]}>
-      {/* ── Top status bar area ── */}
-      <View style={[feed.headerArea, { paddingTop: insets.top, backgroundColor: colors.background, borderBottomColor: colors.divider }]}>
-        {/* App bar */}
+      {/* ── Header ── */}
+      <View style={[feed.headerArea, { paddingTop: insets.top, backgroundColor: colors.background }]}>
         <View style={feed.appBar}>
           <DXNLogo />
           <View style={feed.appBarRight}>
-            {/* Language indicator */}
             <View style={[feed.langBadge, { backgroundColor: colors.primary + '22', borderColor: colors.primary + '44' }]}>
-              <Text style={[feed.langTxt, { color: colors.primary }]}>
-                {language.toUpperCase()}
-              </Text>
+              <Text style={[feed.langTxt, { color: colors.primary }]}>{language.toUpperCase()}</Text>
             </View>
-            {/* Notifications bell */}
             <Link href="/notifications" asChild>
-              <Pressable
-                style={feed.iconBtn}
-                onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-              >
+              <Pressable style={feed.iconBtn}>
                 <Ionicons name="notifications-outline" size={22} color={colors.foreground} />
                 {unreadCount > 0 && (
                   <View style={[feed.badge, { backgroundColor: colors.primary }]}>
@@ -258,13 +172,11 @@ export default function FeedScreen() {
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={[feed.catScroll, isRTL && { flexDirection: 'row-reverse' }]}
-          style={{ borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.divider }}
+          style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.divider, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.divider }}
         >
           {CATEGORIES.map((cat) => (
             <CatTab
-              key={cat.key}
-              cat={cat}
-              lang={language}
+              key={cat.key} cat={cat} lang={language}
               active={activeCategory === cat.key}
               onPress={() => handleCategorySelect(cat.key)}
               colors={colors}
@@ -273,31 +185,56 @@ export default function FeedScreen() {
         </ScrollView>
       </View>
 
-      {/* ── Feed ── */}
+      {/* ── Content ── */}
       {isLoading ? (
-        <ScrollView>
-          {Array.from({ length: 8 }).map((_, i) => (
-            <SkeletonCard key={i} />
-          ))}
+        <ScrollView contentContainerStyle={{ paddingTop: 12 }}>
+          {Array.from({ length: 4 }).map((_, i) => <PostSkeleton key={i} colors={colors} />)}
         </ScrollView>
       ) : isError ? (
-        ErrorComponent
+        <View style={feed.center}>
+          <Ionicons name="cloud-offline-outline" size={52} color={colors.mutedForeground} />
+          <Text style={[feed.msgTitle, { color: colors.foreground }]}>
+            {language === 'ur' ? 'خبریں لوڈ نہیں ہوئیں' : language === 'ar' ? 'فشل تحميل الأخبار' : 'Could not load news'}
+          </Text>
+          <Pressable onPress={() => refetch()} style={[feed.retryBtn, { backgroundColor: colors.primary }]}>
+            <Text style={{ color: '#fff', fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>
+              {language === 'ur' ? 'دوبارہ کوشش' : language === 'ar' ? 'إعادة المحاولة' : 'Try again'}
+            </Text>
+          </Pressable>
+        </View>
       ) : (
         <FlatList
           data={posts}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          ListHeaderComponent={ListHeader}
-          ListEmptyComponent={EmptyComponent}
-          contentContainerStyle={posts.length === 0 ? { flex: 1 } : { paddingBottom: insets.bottom + 80 }}
+          contentContainerStyle={[
+            { paddingTop: 12, paddingBottom: insets.bottom + 90 },
+            posts.length === 0 && { flex: 1 },
+          ]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={isFetching && !isLoading}
-              onRefresh={() => { setPage(1); refetch(); }}
+              onRefresh={() => refetch()}
               tintColor={colors.primary}
               colors={[colors.primary]}
             />
+          }
+          ListEmptyComponent={
+            <View style={feed.center}>
+              <Ionicons name="newspaper-outline" size={52} color={colors.mutedForeground} />
+              <Text style={[feed.msgTitle, { color: colors.foreground }]}>
+                {language === 'ur' ? 'ابھی کوئی خبر نہیں' : language === 'ar' ? 'لا توجد أخبار' : 'No articles yet'}
+              </Text>
+              <Text style={[feed.msgSub, { color: colors.mutedForeground }]}>
+                {language === 'ur' ? 'تازہ کریں یا بعد میں آئیں' : language === 'ar' ? 'حاول التحديث لاحقاً' : 'Pull to refresh or check back later'}
+              </Text>
+              <Pressable onPress={() => refetch()} style={[feed.retryBtn, { backgroundColor: colors.primary }]}>
+                <Text style={{ color: '#fff', fontFamily: 'Inter_600SemiBold', fontSize: 14 }}>
+                  {language === 'ur' ? 'تازہ کریں' : language === 'ar' ? 'تحديث' : 'Refresh'}
+                </Text>
+              </Pressable>
+            </View>
           }
         />
       )}
@@ -307,30 +244,20 @@ export default function FeedScreen() {
 
 const feed = StyleSheet.create({
   root: { flex: 1 },
-  headerArea: { borderBottomWidth: 0 },
+  headerArea: {},
   appBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingVertical: 12,
   },
   appBarRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  langBadge: {
-    paddingHorizontal: 8, paddingVertical: 4,
-    borderRadius: 6, borderWidth: 1,
-  },
+  langBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1 },
   langTxt: { fontSize: 11, fontFamily: 'Inter_700Bold', letterSpacing: 0.5 },
   iconBtn: { position: 'relative', padding: 4 },
-  badge: {
-    position: 'absolute', top: 0, right: 0,
-    width: 16, height: 16, borderRadius: 8,
-    alignItems: 'center', justifyContent: 'center',
-  },
+  badge: { position: 'absolute', top: 0, right: 0, width: 16, height: 16, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   badgeTxt: { fontSize: 9, color: '#fff', fontFamily: 'Inter_700Bold' },
   catScroll: { paddingHorizontal: 4, flexDirection: 'row' },
-  emptyBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 40, paddingTop: 80 },
-  emptyTitle: { fontSize: 18, fontFamily: 'Inter_600SemiBold', textAlign: 'center' },
-  emptySub: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 40, paddingTop: 80 },
+  msgTitle: { fontSize: 18, fontFamily: 'Inter_600SemiBold', textAlign: 'center' },
+  msgSub: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center' },
   retryBtn: { marginTop: 8, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 20 },
 });

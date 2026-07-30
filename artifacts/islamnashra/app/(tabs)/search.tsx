@@ -1,600 +1,211 @@
 /**
- * Search Screen — Item 12: Improved structure for easy extensibility.
- * Clear separation of:
- *  - SearchHeader (input + controls)
- *  - FilterBar (category strip — easily extend with date range, source, etc.)
- *  - SearchResults (server-side results)
- *  - BrowseView (breaking + trending, shown when no query)
- *
- * To add new filters later: add to FilterState type and extend FilterBar.
+ * Search Screen — Clean, minimal
+ * Just a search bar + category filter + results (NewsCard style)
+ * No trending / browse bloat — type to search, results appear instantly
  */
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  FlatList,
-  StyleSheet,
-  Pressable,
-  Platform,
-  ScrollView,
-  ActivityIndicator,
+  View, Text, TextInput, FlatList, StyleSheet, Pressable, ScrollView, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useColors } from '@/hooks/useColors';
-import { useListPosts, useSearchPosts } from '@/lib/api';
-import { SkeletonCard } from '@/components/SkeletonCard';
+import { useSearchPosts } from '@/lib/api';
+import { NewsCard } from '@/components/NewsCard';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { getLocalizedContent } from '@/contexts/LanguageContext';
-import { timeAgo, formatCount } from '@/components/NewsCard';
-import { Link, useLocalSearchParams } from 'expo-router';
-import { Image } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import type { Post } from '@/lib/types';
 
-// ─── Filter state type (extend here to add more filters) ──────────────────────
-export interface FilterState {
-  category: string;
-  // Future filters — add here and wire up in FilterBar:
-  // dateRange?: 'today' | 'week' | 'month';
-  // sourceType?: 'breaking' | 'all';
-}
-
-const DEFAULT_FILTERS: FilterState = { category: 'All' };
-
-// ─── Category list ────────────────────────────────────────────────────────────
-const FILTER_CATS = [
-  { key: 'All', emoji: '🌐' },
-  { key: 'World', emoji: '🌍' },
-  { key: 'Palestine', emoji: '🇵🇸' },
-  { key: 'South Asia', emoji: '🌏' },
-  { key: 'Economy', emoji: '💰' },
-  { key: 'Government', emoji: '🏛️' },
-  { key: 'Security', emoji: '🛡️' },
-  { key: 'Scholars', emoji: '📚' },
-  { key: 'Mosques', emoji: '🕌' },
-  { key: 'Madrassas', emoji: '🎓' },
-  { key: 'Africa', emoji: '🌍' },
-  { key: 'Southeast Asia', emoji: '🏝️' },
-  { key: 'Turkey', emoji: '🇹🇷' },
-  { key: 'Community', emoji: '👥' },
+// ─── Categories ───────────────────────────────────────────────────────────────
+const CATS = [
+  { key: 'All', emoji: '🌐' }, { key: 'World', emoji: '🌍' },
+  { key: 'Palestine', emoji: '🇵🇸' }, { key: 'South Asia', emoji: '🌏' },
+  { key: 'Economy', emoji: '💰' }, { key: 'Government', emoji: '🏛️' },
+  { key: 'Security', emoji: '🛡️' }, { key: 'Scholars', emoji: '📚' },
+  { key: 'Mosques', emoji: '🕌' }, { key: 'Madrassas', emoji: '🎓' },
+  { key: 'Africa', emoji: '🌍' }, { key: 'Southeast Asia', emoji: '🏝️' },
+  { key: 'Turkey', emoji: '🇹🇷' }, { key: 'Community', emoji: '👥' },
 ];
 
-// ─── Strings ──────────────────────────────────────────────────────────────────
-const STRINGS = {
-  ur: {
-    title: 'تلاش',
-    placeholder: 'خبریں تلاش کریں...',
-    noResults: 'کوئی نتیجہ نہیں ملا',
-    noResultsSub: 'دوسرے الفاظ یا زمرہ آزمائیں',
-    cancel: 'منسوخ',
-    breaking: '🔴 بریکنگ نیوز',
-    trending: '🔥 ٹرینڈنگ',
-    resultsFor: 'نتائج:',
-    hint: 'خبریں تلاش کرنے کے لیے لکھیں',
-    allCategories: 'سب',
-  },
-  ar: {
-    title: 'بحث',
-    placeholder: 'ابحث عن الأخبار...',
-    noResults: 'لم يتم العثور على نتائج',
-    noResultsSub: 'جرّب كلمات أو فئة أخرى',
-    cancel: 'إلغاء',
-    breaking: '🔴 عاجل',
-    trending: '🔥 الأكثر تداولاً',
-    resultsFor: 'نتائج:',
-    hint: 'اكتب للبحث في الأخبار',
-    allCategories: 'الكل',
-  },
-  en: {
-    title: 'Search',
-    placeholder: 'Search articles...',
-    noResults: 'No results found',
-    noResultsSub: 'Try different keywords or a category',
-    cancel: 'Cancel',
-    breaking: '🔴 Breaking News',
-    trending: '🔥 Trending',
-    resultsFor: 'Results for:',
-    hint: 'Search across all Islamic news',
-    allCategories: 'All',
-  },
+const STR = {
+  ur: { placeholder: 'خبریں تلاش کریں...', cancel: 'منسوخ', noResults: 'کوئی نتیجہ نہیں', noResultsSub: 'دوسرے الفاظ آزمائیں', hint: 'خبریں تلاش کرنے کے لیے لکھیں', results: 'نتائج', title: 'تلاش' },
+  ar: { placeholder: 'ابحث عن الأخبار...', cancel: 'إلغاء', noResults: 'لا توجد نتائج', noResultsSub: 'جرّب كلمات أخرى', hint: 'اكتب للبحث في الأخبار', results: 'نتائج', title: 'بحث' },
+  en: { placeholder: 'Search articles...', cancel: 'Cancel', noResults: 'No results found', noResultsSub: 'Try different keywords', hint: 'Type to search all news', results: 'Results', title: 'Search' },
 } as const;
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-function normalize(str: string) { return str.toLowerCase().trim(); }
-
-function useDebounced(value: string, delayMs = 400): string {
-  const [debounced, setDebounced] = useState(value);
+function useDebounced(val: string, ms = 350): string {
+  const [deb, setDeb] = useState(val);
   useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(timer);
-  }, [value, delayMs]);
-  return debounced;
+    const t = setTimeout(() => setDeb(val), ms);
+    return () => clearTimeout(t);
+  }, [val, ms]);
+  return deb;
 }
 
-// ─── HighlightText ────────────────────────────────────────────────────────────
-function HighlightText({ text, query, style, highlightColor, numberOfLines, rtl }: {
-  text: string; query: string; style?: object; highlightColor: string;
-  numberOfLines?: number; rtl?: boolean;
-}) {
-  if (!query.trim()) return <Text style={[style, rtl && styles.rtl]} numberOfLines={numberOfLines}>{text}</Text>;
-  const idx = normalize(text).indexOf(normalize(query));
-  if (idx === -1) return <Text style={[style, rtl && styles.rtl]} numberOfLines={numberOfLines}>{text}</Text>;
-  return (
-    <Text style={[style, rtl && styles.rtl]} numberOfLines={numberOfLines}>
-      {text.slice(0, idx)}
-      <Text style={[style, { backgroundColor: highlightColor, fontFamily: 'Inter_700Bold' }]}>
-        {text.slice(idx, idx + query.length)}
-      </Text>
-      {text.slice(idx + query.length)}
-    </Text>
-  );
-}
-
-// ─── SearchResultRow ──────────────────────────────────────────────────────────
-function SearchResultRow({ post, query, language, colors }: {
-  post: Post; query: string; language: string;
-  colors: ReturnType<typeof useColors>;
-}) {
-  const { title, body } = getLocalizedContent(post as any, language as any);
-  const isRTL = language === 'ur' || language === 'ar';
-
-  return (
-    <Link href={`/post/${post.id}`} asChild>
-      <Pressable
-        onPressIn={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-        style={({ pressed }) => [
-          styles.resultRow,
-          { backgroundColor: pressed ? colors.muted : colors.card, borderColor: colors.border },
-        ]}
-      >
-        {post.hasImage && post.imageUrl ? (
-          <Image source={{ uri: post.imageUrl }} style={styles.thumb} contentFit="cover" transition={150} />
-        ) : (
-          <View style={[styles.thumbPlaceholder, { backgroundColor: colors.primary + '33' }]}>
-            <Ionicons name="newspaper" size={22} color={colors.primary} />
-          </View>
-        )}
-        <View style={styles.resultContent}>
-          <View style={[styles.metaRow, isRTL && styles.rowRev]}>
-            <View style={[styles.catBadge, { backgroundColor: colors.primary + '18' }]}>
-              <Text style={[styles.catTxt, { color: colors.primary }]}>{post.category}</Text>
-            </View>
-            {post.isBreaking && (
-              <View style={[styles.breakBadge, { backgroundColor: colors.destructive }]}>
-                <Text style={[styles.breakTxt, { color: '#FFF' }]}>LIVE</Text>
-              </View>
-            )}
-            <Text style={[styles.timeTxt, { color: colors.mutedForeground, marginLeft: 'auto' }]}>
-              {timeAgo(post.publishedAt)}
-            </Text>
-          </View>
-          <HighlightText
-            text={title} query={query}
-            style={[styles.resultTitle, { color: colors.cardForeground }]}
-            highlightColor={colors.accent + '55'} numberOfLines={2} rtl={isRTL}
-          />
-          {body ? (
-            <HighlightText
-              text={body} query={query}
-              style={[styles.resultSnippet, { color: colors.mutedForeground }]}
-              highlightColor={colors.accent + '33'} numberOfLines={1} rtl={isRTL}
-            />
-          ) : null}
-          <View style={[styles.engRow, isRTL && styles.rowRev]}>
-            <Ionicons name="eye-outline" size={12} color={colors.mutedForeground} />
-            <Text style={[styles.engTxt, { color: colors.mutedForeground }]}>{formatCount(post.viewsCount ?? 0)}</Text>
-            <Ionicons name="heart-outline" size={12} color={colors.mutedForeground} style={{ marginLeft: 6 }} />
-            <Text style={[styles.engTxt, { color: colors.mutedForeground }]}>{formatCount(post.likesCount ?? 0)}</Text>
-          </View>
-        </View>
-      </Pressable>
-    </Link>
-  );
-}
-
-// ─── PinnedCard (Breaking strip) ──────────────────────────────────────────────
-function PinnedCard({ post, language, colors }: {
-  post: Post; language: string; colors: ReturnType<typeof useColors>;
-}) {
-  const { title } = getLocalizedContent(post as any, language as any);
-  const isRTL = language === 'ur' || language === 'ar';
-
-  return (
-    <Link href={`/post/${post.id}`} asChild>
-      <Pressable
-        onPressIn={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-        style={({ pressed }) => [
-          styles.pinnedCard,
-          { backgroundColor: pressed ? colors.muted : colors.card, borderColor: colors.border },
-        ]}
-      >
-        {post.hasImage && post.imageUrl ? (
-          <Image source={{ uri: post.imageUrl }} style={styles.pinnedImg} contentFit="cover" transition={150} />
-        ) : (
-          <View style={[styles.pinnedImg, { backgroundColor: colors.primary + '44', alignItems: 'center', justifyContent: 'center' }]}>
-            <Ionicons name="newspaper" size={28} color={colors.primary} />
-          </View>
-        )}
-        <View style={[styles.pinnedBody, { backgroundColor: colors.card }]}>
-          {post.isBreaking && (
-            <View style={[styles.breakBadge, { backgroundColor: colors.destructive, marginBottom: 5, alignSelf: 'flex-start' }]}>
-              <Text style={[styles.breakTxt, { color: '#FFF' }]}>🔴 LIVE</Text>
-            </View>
-          )}
-          <Text style={[styles.pinnedTitle, { color: colors.cardForeground }, isRTL && styles.rtl]} numberOfLines={2}>
-            {title}
-          </Text>
-          <View style={[styles.engRow, { marginTop: 5 }]}>
-            <Ionicons name="eye-outline" size={11} color={colors.mutedForeground} />
-            <Text style={[styles.engTxt, { color: colors.mutedForeground }]}>{formatCount(post.viewsCount ?? 0)}</Text>
-            <Text style={[styles.engTxt, { color: colors.mutedForeground, marginLeft: 'auto' }]}>
-              {timeAgo(post.publishedAt)}
-            </Text>
-          </View>
-        </View>
-      </Pressable>
-    </Link>
-  );
-}
-
-// ─── FilterBar ────────────────────────────────────────────────────────────────
-// Extensible filter bar. Add new filter rows inside this component as needed.
-function FilterBar({
-  filters,
-  onFiltersChange,
-  colors,
-  language,
-}: {
-  filters: FilterState;
-  onFiltersChange: (f: FilterState) => void;
-  colors: ReturnType<typeof useColors>;
-  language: string;
-}) {
-  const s = STRINGS[language as keyof typeof STRINGS] ?? STRINGS.en;
-
-  return (
-    <View style={[styles.catStrip, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
-      {/* Category filter row */}
-      <ScrollView
-        horizontal showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.catScroll}
-      >
-        {FILTER_CATS.map((cat) => {
-          const active = filters.category === cat.key;
-          return (
-            <Pressable
-              key={cat.key}
-              onPress={() => onFiltersChange({ ...filters, category: cat.key })}
-              style={[
-                styles.catChip,
-                {
-                  backgroundColor: active ? colors.primary : colors.card,
-                  borderColor: active ? colors.primary : colors.border,
-                },
-              ]}
-            >
-              <Text style={styles.catEmoji}>{cat.emoji}</Text>
-              <Text style={[
-                styles.catLabel,
-                { color: active ? colors.primaryForeground : colors.foreground,
-                  fontFamily: active ? 'Inter_700Bold' : 'Inter_400Regular' },
-              ]}>
-                {cat.key === 'All' ? s.allCategories : cat.key}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
-      {/* ─── Future filter rows (date range, source, etc.) go here ─── */}
-    </View>
-  );
-}
-
-// ─── BrowseView (no active query) ─────────────────────────────────────────────
-function BrowseView({
-  breakingPosts, trendingPosts, language, colors, insets,
-}: {
-  breakingPosts: Post[]; trendingPosts: Post[];
-  language: string; colors: ReturnType<typeof useColors>;
-  insets: ReturnType<typeof useSafeAreaInsets>;
-}) {
-  const s = STRINGS[language as keyof typeof STRINGS] ?? STRINGS.en;
-  const isRTL = language === 'ur' || language === 'ar';
-
-  return (
-    <ScrollView
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={{ paddingBottom: insets.bottom + 90 }}
-      keyboardDismissMode="on-drag"
-    >
-      {breakingPosts.length > 0 && (
-        <>
-          <View style={styles.sectionHeader}>
-            <View style={styles.sectionTitleRow}>
-              <View style={[styles.sectionDot, { backgroundColor: colors.destructive }]} />
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{s.breaking}</Text>
-            </View>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}
-            contentContainerStyle={{ paddingHorizontal: 14, gap: 10, paddingBottom: 4 }}>
-            {breakingPosts.map((p) => (
-              <PinnedCard key={p.id} post={p} language={language} colors={colors} />
-            ))}
-          </ScrollView>
-        </>
-      )}
-
-      {trendingPosts.length > 0 && (
-        <>
-          <View style={[styles.sectionHeader, { marginTop: 6 }]}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{s.trending}</Text>
-          </View>
-          {trendingPosts.map((p, i) => (
-            <Link key={p.id} href={`/post/${p.id}`} asChild>
-              <Pressable
-                onPressIn={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)}
-                style={({ pressed }) => [
-                  styles.trendRow,
-                  { backgroundColor: pressed ? colors.muted : colors.card, borderColor: colors.border },
-                ]}
-              >
-                <Text style={[styles.rankNum, { color: i < 3 ? colors.accent : colors.mutedForeground }]}>
-                  {String(i + 1).padStart(2, '0')}
-                </Text>
-                <View style={{ flex: 1, gap: 4 }}>
-                  <View style={[styles.metaRow, isRTL && styles.rowRev]}>
-                    <View style={[styles.catBadge, { backgroundColor: colors.primary + '18' }]}>
-                      <Text style={[styles.catTxt, { color: colors.primary }]}>{p.category}</Text>
-                    </View>
-                  </View>
-                  <Text
-                    style={[styles.trendTitle, { color: colors.cardForeground }, isRTL && styles.rtl]}
-                    numberOfLines={2}
-                  >
-                    {getLocalizedContent(p as any, language as any).title}
-                  </Text>
-                  <View style={styles.engRow}>
-                    <Ionicons name="eye-outline" size={12} color={colors.mutedForeground} />
-                    <Text style={[styles.engTxt, { color: colors.mutedForeground }]}>{formatCount(p.viewsCount ?? 0)}</Text>
-                    <Text style={[styles.engTxt, { color: colors.mutedForeground, marginLeft: 'auto' }]}>
-                      {timeAgo(p.publishedAt)}
-                    </Text>
-                  </View>
-                </View>
-                {p.hasImage && p.imageUrl ? (
-                  <Image source={{ uri: p.imageUrl }} style={styles.trendThumb} contentFit="cover" transition={150} />
-                ) : (
-                  <View style={[styles.trendThumb, { backgroundColor: colors.primary + '22', alignItems: 'center', justifyContent: 'center' }]}>
-                    <Ionicons name="newspaper" size={18} color={colors.primary} />
-                  </View>
-                )}
-              </Pressable>
-            </Link>
-          ))}
-        </>
-      )}
-
-      {breakingPosts.length === 0 && trendingPosts.length === 0 && (
-        <View style={styles.emptyBox}>
-          <Text style={{ fontSize: 48 }}>🔍</Text>
-          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{s.hint}</Text>
-        </View>
-      )}
-    </ScrollView>
-  );
-}
-
-// ─── Main Screen ──────────────────────────────────────────────────────────────
 export default function SearchScreen() {
-  const insets = useSafeAreaInsets();
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const { language } = useLanguage();
-  const s = STRINGS[language] ?? STRINGS.en;
+  const s = STR[language];
   const isRTL = language === 'ur' || language === 'ar';
-  const params = useLocalSearchParams<{ q?: string }>();
 
-  const [query, setQuery] = useState(params.q ?? '');
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
-  const inputRef = useRef<TextInput>(null);
+  const [query, setQuery] = useState('');
+  const [focused, setFocused] = useState(false);
+  const [cat, setCat] = useState('All');
+  const debouncedQuery = useDebounced(query);
 
-  // Sync initial query from navigation params
-  useEffect(() => {
-    if (params.q) {
-      setQuery(params.q);
-      inputRef.current?.focus();
-    }
-  }, [params.q]);
+  const hasQuery = debouncedQuery.trim().length > 0;
 
-  const debouncedQuery = useDebounced(query, 400);
-  const hasQuery = query.trim().length > 0;
-
-  // Server-side search
-  const { data: serverResults, isLoading: isSearching, isFetching: isSearchFetching } =
-    useSearchPosts(
-      { query: debouncedQuery, category: filters.category, limit: 100 },
-      { enabled: debouncedQuery.trim().length > 0 },
-    );
-
-  // Category browse (no text query)
-  const { data: feedData, isLoading: isFeedLoading } = useListPosts(
-    { limit: 150 },
-    { query: { enabled: !hasQuery } },
+  const { data, isFetching, isError } = useSearchPosts(
+    { query: debouncedQuery, category: cat === 'All' ? undefined : cat, limit: 50 },
+    { enabled: hasQuery }
   );
-  const allPosts: Post[] = feedData?.posts ?? [];
 
-  const breakingPosts = useMemo(
-    () => allPosts.filter((p) => p.isBreaking).slice(0, 5),
-    [allPosts],
-  );
-  const trendingPosts = useMemo(() => {
-    const bids = new Set(breakingPosts.map((p) => p.id));
-    return [...allPosts]
-      .filter((p) => !bids.has(p.id) && (filters.category === 'All' || p.category === filters.category))
-      .sort((a, b) => (b.viewsCount + b.likesCount) - (a.viewsCount + a.likesCount))
-      .slice(0, 10);
-  }, [allPosts, breakingPosts, filters.category]);
+  const results = data ?? [];
 
-  const categoryOnlyResults = useMemo(() => {
-    if (hasQuery || filters.category === 'All') return [];
-    return allPosts
-      .filter((p) => p.category === filters.category)
-      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-  }, [hasQuery, filters.category, allPosts]);
+  const handleClear = useCallback(() => { setQuery(''); Haptics.selectionAsync(); }, []);
+  const handleCatSelect = useCallback((k: string) => { Haptics.selectionAsync(); setCat(k); }, []);
 
-  const showSearchResults = hasQuery;
-  const showCategoryResults = !hasQuery && filters.category !== 'All';
-  const showBrowse = !hasQuery && filters.category === 'All';
-
-  const isLoading = showSearchResults ? (isSearching || isSearchFetching) : isFeedLoading;
-  const results: Post[] = showSearchResults ? (serverResults ?? []) : showCategoryResults ? categoryOnlyResults : [];
-  const showResults = showSearchResults || showCategoryResults;
+  const renderItem = useCallback(({ item, index }: { item: Post; index: number }) => (
+    <NewsCard post={item} language={language} isLast={index === results.length - 1} />
+  ), [language, results.length]);
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.background }]}>
+    <View style={[sc.root, { backgroundColor: colors.background }]}>
       {/* ── Header ── */}
-      <LinearGradient
-        colors={[colors.headerGradientStart, colors.headerGradientEnd]}
-        style={[styles.header, { paddingTop: insets.top + 8 }]}
-      >
-        <Text style={[styles.headerTitle, { color: colors.primaryForeground }]}>{s.title}</Text>
-        <View style={[styles.searchRow, { paddingBottom: 12 }]}>
-          <View style={[styles.searchBox, { backgroundColor: 'rgba(255,255,255,0.15)' }]}>
-            {isSearchFetching && hasQuery ? (
-              <ActivityIndicator size="small" color="rgba(255,255,255,0.7)" style={{ marginRight: 8 }} />
-            ) : (
-              <Ionicons name="search-outline" size={18} color="rgba(255,255,255,0.7)" style={{ marginRight: 8 }} />
-            )}
+      <View style={[sc.header, { paddingTop: insets.top + 8, backgroundColor: colors.background, borderBottomColor: colors.divider }]}>
+        <Text style={[sc.title, { color: colors.foreground }]}>{s.title}</Text>
+
+        {/* Search bar */}
+        <View style={[sc.searchRow]}>
+          <View style={[sc.searchBox, { backgroundColor: colors.muted, borderColor: colors.divider }]}>
+            <Ionicons name="search" size={18} color={colors.mutedForeground} />
             <TextInput
-              ref={inputRef}
-              style={[styles.searchInput, { color: '#FFF', textAlign: isRTL ? 'right' : 'left' }]}
+              style={[sc.input, { color: colors.foreground }, isRTL && sc.rtl]}
               placeholder={s.placeholder}
-              placeholderTextColor="rgba(255,255,255,0.45)"
+              placeholderTextColor={colors.mutedForeground}
               value={query}
               onChangeText={setQuery}
+              onFocus={() => setFocused(true)}
+              onBlur={() => setFocused(false)}
               returnKeyType="search"
               autoCorrect={false}
               autoCapitalize="none"
-              clearButtonMode={Platform.OS === 'ios' ? 'while-editing' : 'never'}
+              clearButtonMode="never"
             />
-            {query.length > 0 && Platform.OS !== 'ios' && (
-              <Pressable onPress={() => { setQuery(''); inputRef.current?.focus(); }} hitSlop={10}>
-                <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.7)" />
+            {query.length > 0 && (
+              <Pressable onPress={handleClear} hitSlop={8}>
+                <Ionicons name="close-circle" size={18} color={colors.mutedForeground} />
               </Pressable>
             )}
+            {isFetching && hasQuery && (
+              <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 4 }} />
+            )}
           </View>
-          {query.length > 0 && (
-            <Pressable onPress={() => { setQuery(''); inputRef.current?.blur(); }}>
-              <Text style={[styles.cancelTxt, { color: 'rgba(255,255,255,0.8)' }]}>{s.cancel}</Text>
+          {(focused || query.length > 0) && (
+            <Pressable onPress={() => { setQuery(''); setFocused(false); }} style={sc.cancelBtn}>
+              <Text style={[sc.cancelTxt, { color: colors.primary }]}>{s.cancel}</Text>
             </Pressable>
           )}
         </View>
-      </LinearGradient>
 
-      {/* ── Extensible Filter Bar ── */}
-      <FilterBar filters={filters} onFiltersChange={setFilters} colors={colors} language={language} />
-
-      {/* ── Body ── */}
-      {isLoading ? (
-        <View style={{ paddingTop: 8 }}>
-          {[1, 2, 3].map((i) => <SkeletonCard key={i} />)}
-        </View>
-      ) : showResults ? (
-        results.length === 0 ? (
-          <View style={styles.emptyBox}>
-            <Text style={{ fontSize: 48 }}>🔍</Text>
-            <Text style={[styles.emptyTitle, { color: colors.foreground }]}>{s.noResults}</Text>
-            <Text style={[styles.emptySub, { color: colors.mutedForeground }]}>{s.noResultsSub}</Text>
-          </View>
-        ) : (
-          <>
-            <View style={[styles.resultsHeader, { borderBottomColor: colors.border }]}>
-              <Text style={[styles.resultsLabel, { color: colors.mutedForeground }]}>
-                {s.resultsFor}{' '}
-                {hasQuery && <Text style={{ color: colors.foreground, fontFamily: 'Inter_600SemiBold' }}>{query}</Text>}
-                {'  '}
-                <Text style={{ color: colors.primary }}>({results.length})</Text>
+        {/* Category filter strip */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={sc.catRow}
+          style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.divider }}
+        >
+          {CATS.map((c) => (
+            <Pressable
+              key={c.key}
+              onPress={() => handleCatSelect(c.key)}
+              style={[
+                sc.catChip,
+                {
+                  backgroundColor: cat === c.key ? colors.primary : colors.muted,
+                  borderColor: cat === c.key ? colors.primary : colors.divider,
+                },
+              ]}
+            >
+              <Text style={sc.catEmoji}>{c.emoji}</Text>
+              <Text style={[sc.catLabel, { color: cat === c.key ? '#fff' : colors.mutedForeground }]}>
+                {c.key === 'All' ? (language === 'ur' ? 'سب' : language === 'ar' ? 'الكل' : 'All') : c.key}
               </Text>
-            </View>
-            <FlatList
-              data={results}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <SearchResultRow post={item} query={query} language={language} colors={colors} />
-              )}
-              contentContainerStyle={{ paddingBottom: insets.bottom + 90, paddingTop: 4 }}
-              showsVerticalScrollIndicator={false}
-              keyboardDismissMode="on-drag"
-            />
-          </>
-        )
-      ) : showBrowse ? (
-        <BrowseView
-          breakingPosts={breakingPosts}
-          trendingPosts={trendingPosts}
-          language={language}
-          colors={colors}
-          insets={insets}
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* ── Results / Empty state ── */}
+      {!hasQuery ? (
+        /* Empty state — no query yet */
+        <View style={sc.emptyCenter}>
+          <Ionicons name="search-outline" size={56} color={colors.mutedForeground} />
+          <Text style={[sc.emptyTitle, { color: colors.foreground }]}>{s.hint}</Text>
+          <Text style={[sc.emptySub, { color: colors.mutedForeground }]}>
+            {language === 'ur' ? '14 زمرے دستیاب ہیں' : language === 'ar' ? '١٤ فئة متاحة' : '14 categories available'}
+          </Text>
+        </View>
+      ) : isError ? (
+        <View style={sc.emptyCenter}>
+          <Ionicons name="cloud-offline-outline" size={52} color={colors.mutedForeground} />
+          <Text style={[sc.emptyTitle, { color: colors.foreground }]}>
+            {language === 'ur' ? 'تلاش ناکام' : language === 'ar' ? 'فشل البحث' : 'Search failed'}
+          </Text>
+        </View>
+      ) : results.length === 0 && hasQuery && !isFetching ? (
+        <View style={sc.emptyCenter}>
+          <Ionicons name="document-outline" size={52} color={colors.mutedForeground} />
+          <Text style={[sc.emptyTitle, { color: colors.foreground }]}>{s.noResults}</Text>
+          <Text style={[sc.emptySub, { color: colors.mutedForeground }]}>{s.noResultsSub}</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={results}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          contentContainerStyle={{ paddingTop: 4, paddingBottom: insets.bottom + 90 }}
+          showsVerticalScrollIndicator={false}
+          keyboardDismissMode="on-drag"
+          ListHeaderComponent={
+            results.length > 0 ? (
+              <View style={[sc.resultsHeader, { borderBottomColor: colors.divider }]}>
+                <Text style={[sc.resultsCount, { color: colors.mutedForeground }]}>
+                  {results.length} {s.results} — "{debouncedQuery}"
+                </Text>
+              </View>
+            ) : null
+          }
         />
-      ) : null}
+      )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const sc = StyleSheet.create({
   root: { flex: 1 },
-  header: { paddingHorizontal: 16 },
-  headerTitle: { fontSize: 22, fontFamily: 'Inter_700Bold', marginBottom: 12, textAlign: 'center' },
-  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  searchBox: { flex: 1, flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11 },
-  searchInput: { flex: 1, fontSize: 15, padding: 0, fontFamily: 'Inter_400Regular' },
-  cancelTxt: { fontSize: 14, fontFamily: 'Inter_500Medium' },
-
-  catStrip: { borderBottomWidth: StyleSheet.hairlineWidth },
-  catScroll: { paddingHorizontal: 14, paddingVertical: 9, gap: 7 },
-  catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, borderWidth: 1 },
+  header: { borderBottomWidth: StyleSheet.hairlineWidth, gap: 0 },
+  title: { fontSize: 22, fontFamily: 'Inter_700Bold', paddingHorizontal: 16, paddingBottom: 10 },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingBottom: 10 },
+  searchBox: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8,
+    borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1,
+  },
+  input: { flex: 1, fontSize: 15, padding: 0, fontFamily: 'Inter_400Regular' },
+  rtl: { textAlign: 'right', writingDirection: 'rtl' },
+  cancelBtn: { paddingHorizontal: 4 },
+  cancelTxt: { fontSize: 15, fontFamily: 'Inter_500Medium' },
+  catRow: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 9, gap: 7 },
+  catChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 100, borderWidth: 1,
+  },
   catEmoji: { fontSize: 12 },
-  catLabel: { fontSize: 12 },
-
-  sectionHeader: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
-  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sectionDot: { width: 8, height: 8, borderRadius: 4 },
-  sectionTitle: { fontSize: 17, fontFamily: 'Inter_700Bold' },
-
-  pinnedCard: { width: 210, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
-  pinnedImg: { width: '100%', height: 120 },
-  pinnedBody: { padding: 10 },
-  pinnedTitle: { fontSize: 13, fontFamily: 'Inter_600SemiBold', lineHeight: 18 },
-
+  catLabel: { fontSize: 12, fontFamily: 'Inter_500Medium' },
   resultsHeader: { paddingHorizontal: 16, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  resultsLabel: { fontSize: 13, fontFamily: 'Inter_400Regular' },
-
-  resultRow: { flexDirection: 'row', marginHorizontal: 12, marginVertical: 5, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' },
-  thumb: { width: 80, height: 95 },
-  thumbPlaceholder: { width: 80, height: 95, alignItems: 'center', justifyContent: 'center' },
-  resultContent: { flex: 1, padding: 10, gap: 4 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
-  rowRev: { flexDirection: 'row-reverse' },
-  catBadge: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 100 },
-  catTxt: { fontSize: 10, fontFamily: 'Inter_700Bold' },
-  breakBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  breakTxt: { fontSize: 9, fontFamily: 'Inter_700Bold', textTransform: 'uppercase' },
-  timeTxt: { fontSize: 11, fontFamily: 'Inter_400Regular' },
-  resultTitle: { fontSize: 14, fontFamily: 'Inter_600SemiBold', lineHeight: 19 },
-  resultSnippet: { fontSize: 12, fontFamily: 'Inter_400Regular', lineHeight: 16 },
-  engRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
-  engTxt: { fontSize: 11, fontFamily: 'Inter_400Regular' },
-
-  trendRow: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 12, marginVertical: 5, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, padding: 10, gap: 10, overflow: 'hidden' },
-  rankNum: { fontSize: 22, fontFamily: 'Inter_700Bold', width: 34, textAlign: 'center' },
-  trendTitle: { fontSize: 14, fontFamily: 'Inter_600SemiBold', lineHeight: 19 },
-  trendThumb: { width: 64, height: 64, borderRadius: 10 },
-
-  emptyBox: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, gap: 12, paddingTop: 80 },
+  resultsCount: { fontSize: 13, fontFamily: 'Inter_400Regular' },
+  emptyCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 40 },
   emptyTitle: { fontSize: 17, fontFamily: 'Inter_600SemiBold', textAlign: 'center' },
   emptySub: { fontSize: 14, fontFamily: 'Inter_400Regular', textAlign: 'center' },
-
-  rtl: { textAlign: 'right', writingDirection: 'rtl' },
 });

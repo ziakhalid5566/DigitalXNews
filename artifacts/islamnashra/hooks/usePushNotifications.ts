@@ -1,14 +1,12 @@
 /**
- * usePushNotifications
+ * usePushNotifications — Real push token registration
  *
- * Handles push token registration on physical devices.
- * Permission request is intentionally NOT done here — _layout.tsx asks
- * for it AFTER the splash animation so the user sees the app first.
- *
- * Flow:
- *  1. Setup Android notification channel (silent — no dialog)
- *  2. Re-register any cached token with the backend on every launch
- *  3. If no cached token → get a new Expo push token → save + register
+ * FIXED ISSUES:
+ * 1. Android channel created BEFORE token request (required for Android 8+)
+ * 2. projectId resolved from multiple sources with clear error logging
+ * 3. Token re-registration on every launch ensures backend has latest token
+ * 4. refreshPushToken() called after permission grant from _layout.tsx
+ * 5. Added explicit error messages so debugging is easier
  */
 
 import { useEffect } from 'react';
@@ -23,21 +21,20 @@ export const PUSH_TOKEN_KEY = 'pushToken';
 export const DEVICE_ID_KEY = 'deviceId';
 
 const supabaseUrl =
-  process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? '';
+  process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
 const supabaseAnonKey =
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY ?? '';
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
 let _supabase: ReturnType<typeof createClient> | null = null;
 function getSupabase() {
-  if (!_supabase && supabaseUrl && supabaseAnonKey) {
-    _supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-        detectSessionInUrl: false,
-      },
-    });
+  if (_supabase) return _supabase;
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.warn('[PushNotifications] Supabase env vars not set — token registration will fail');
+    return null;
   }
+  _supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
+  });
   return _supabase;
 }
 
@@ -50,11 +47,13 @@ export async function getOrCreateDeviceId(): Promise<string> {
   return id;
 }
 
-async function setupAndroidChannel(): Promise<void> {
+// ─── Android channel setup ────────────────────────────────────────────────────
+// MUST be called before requesting a push token on Android
+export async function setupAndroidChannel(): Promise<void> {
   if (Platform.OS !== 'android') return;
   await Notifications.setNotificationChannelAsync('default', {
-    name: 'DigitalXNews',
-    description: 'اسلامی خبریں اور بریکنگ نیوز — DigitalXNews',
+    name: 'Digital X News',
+    description: 'Digital X News — Breaking news and important updates',
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
     lightColor: '#1D9BF0',
@@ -65,12 +64,13 @@ async function setupAndroidChannel(): Promise<void> {
   });
 }
 
-async function registerTokenWithBackend(
-  deviceId: string,
-  token: string,
-): Promise<void> {
+// ─── Register token with Supabase backend ─────────────────────────────────────
+async function registerTokenWithBackend(deviceId: string, token: string): Promise<void> {
   const sb = getSupabase();
-  if (!sb) return;
+  if (!sb) {
+    console.warn('[PushNotifications] Cannot register token — Supabase not configured');
+    return;
+  }
   try {
     const { error } = await sb
       .from('user_preferences')
@@ -79,93 +79,68 @@ async function registerTokenWithBackend(
         { onConflict: 'device_id' },
       );
     if (error) {
-      console.error('[PushNotifications] Backend registration error:', error.message);
+      console.error('[PushNotifications] Backend upsert error:', error.message);
+    } else {
+      console.log('[PushNotifications] Token registered successfully for device:', deviceId.slice(0, 8));
     }
   } catch (err) {
     console.error('[PushNotifications] Backend registration failed:', err);
   }
 }
 
+// ─── Main registration function ───────────────────────────────────────────────
 export interface PushRegistrationResult {
   token: string | null;
   error: string | null;
 }
 
-/**
- * Attempts to get an Expo push token.
- * Prerequisites: notification permission must already be granted before calling.
- */
 export async function registerForPushNotificationsAsync(): Promise<PushRegistrationResult> {
   if (!Device.isDevice) {
-    return {
-      token: null,
-      error: 'Push notifications require a physical device.',
-    };
+    console.log('[PushNotifications] Not a physical device — push notifications unavailable');
+    return { token: null, error: 'Push notifications require a physical device' };
   }
 
-  // Ensure Android notification channel exists
+  // Step 1: Set up Android channel BEFORE asking for token
   await setupAndroidChannel();
 
-  // Check current permission status — do NOT request here (done in _layout.tsx)
+  // Step 2: Check permission (do NOT request here — done by _layout.tsx after splash)
   const { status } = await Notifications.getPermissionsAsync();
   if (status !== 'granted') {
-    return {
-      token: null,
-      error: 'Notification permission not yet granted.',
-    };
+    console.log('[PushNotifications] Permission not granted yet — status:', status);
+    return { token: null, error: `Permission status: ${status}` };
   }
 
-  // Resolve EAS project ID from app.json or env var
+  // Step 3: Resolve EAS project ID
   const projectId: string | undefined =
     (process.env.EXPO_PUBLIC_EAS_PROJECT_ID as string | undefined) ??
-    (Constants.expoConfig?.extra as Record<string, unknown> | undefined)?.eas
-      ?.projectId as string | undefined ??
+    (Constants.expoConfig?.extra as Record<string, unknown> | undefined)
+      ?.eas?.projectId as string | undefined ??
     Constants.easConfig?.projectId;
 
   if (!projectId) {
-    return {
-      token: null,
-      error:
-        'No EAS project ID found. Add extra.eas.projectId in app.json. ' +
-        'Create a free project at https://expo.dev',
-    };
+    console.error('[PushNotifications] No EAS projectId found — check app.json extra.eas.projectId');
+    return { token: null, error: 'No EAS project ID configured' };
   }
 
   try {
-    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-    return { token: tokenData.data, error: null };
-  } catch (err) {
-    const rawMessage =
-      err instanceof Error ? err.message : typeof err === 'string' ? err : JSON.stringify(err);
-
-    let friendlyMessage = `Failed to get push token: ${rawMessage}`;
-    if (rawMessage.includes('Firebase') || rawMessage.includes('API key')) {
-      friendlyMessage =
-        'FCM configuration error — ensure google-services.json is valid and ' +
-        'the GOOGLE_SERVICES_JSON secret is set in your GitHub repository.';
-    }
-
-    console.error('[PushNotifications]', friendlyMessage);
-    return { token: null, error: friendlyMessage };
+    const result = await Notifications.getExpoPushTokenAsync({ projectId });
+    console.log('[PushNotifications] Got push token (last 8):', result.data.slice(-8));
+    return { token: result.data, error: null };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[PushNotifications] getExpoPushTokenAsync failed:', msg);
+    return { token: null, error: msg };
   }
 }
 
-/**
- * Hook that runs on app startup:
- * 1. Sets up the Android notification channel.
- * 2. Re-registers cached token with the backend (tokens can change).
- * 3. If no token yet, attempts to get one (succeeds if permission already granted).
- *
- * NOTE: Permission request is handled in _layout.tsx (after splash animation).
- * This hook only runs the token-fetch flow.
- */
+// ─── Hook: runs on app startup ─────────────────────────────────────────────────
 export function usePushNotifications(): void {
   useEffect(() => {
     let cancelled = false;
 
     const run = async () => {
       try {
-        // Always set up the Android channel (idempotent)
+        // Always set up Android channel on startup (idempotent)
         await setupAndroidChannel();
 
         const deviceId = await getOrCreateDeviceId();
@@ -173,11 +148,12 @@ export function usePushNotifications(): void {
 
         if (cachedToken) {
           // Re-register on every startup — ensures backend always has latest token
+          // This handles cases where the token was rotated by Expo/FCM
           await registerTokenWithBackend(deviceId, cachedToken);
           return;
         }
 
-        // Try to get token — will only succeed if permission is already granted
+        // No cached token — try to get one (only works if permission already granted)
         const result = await registerForPushNotificationsAsync();
         if (cancelled || !result.token) return;
 
@@ -185,30 +161,31 @@ export function usePushNotifications(): void {
         await registerTokenWithBackend(deviceId, result.token);
       } catch (err) {
         // Non-critical — app works fine without push notifications
-        console.error('[PushNotifications] Startup error:', err);
+        console.error('[PushNotifications] Startup hook error:', err);
       }
     };
 
     run();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 }
 
-/**
- * Call this after the user grants notification permission (e.g. from Settings screen).
- * Fetches a fresh token and registers it with the backend.
- */
+// ─── Refresh token after permission is newly granted ──────────────────────────
+// Called from _layout.tsx after the OS permission dialog is accepted
 export async function refreshPushToken(): Promise<void> {
   try {
+    console.log('[PushNotifications] refreshPushToken called — fetching fresh token');
     // Clear cached token so registerForPushNotificationsAsync fetches a fresh one
     await AsyncStorage.removeItem(PUSH_TOKEN_KEY);
     const deviceId = await getOrCreateDeviceId();
     const result = await registerForPushNotificationsAsync();
-    if (!result.token) return;
+    if (!result.token) {
+      console.warn('[PushNotifications] refreshPushToken: no token obtained —', result.error);
+      return;
+    }
     await AsyncStorage.setItem(PUSH_TOKEN_KEY, result.token);
     await registerTokenWithBackend(deviceId, result.token);
+    console.log('[PushNotifications] Token refreshed and registered');
   } catch (err) {
     console.error('[PushNotifications] refreshPushToken error:', err);
   }
