@@ -1,6 +1,6 @@
 kind = "mobile"
 previewPath = "/"
-title = "IslamNashra"
+title = "Digital X News"
 version = "1.0.0"
 id = "artifacts/islamnashra"
 router = "expo-domain"
@@ -12,11 +12,11 @@ paths = [ "/" ]
 localPort = 20173
 
 [services.development]
-run = "pnpm --filter @workspace/islamnashra run dev"
+run = "pnpm --filter @workspace/digital-x-news run dev"
 
 [services.production]
-build = [ "pnpm", "--filter", "@workspace/islamnashra", "run", "build" ]
-run = [ "pnpm", "--filter", "@workspace/islamnashra", "run", "serve" ]
+build = [ "pnpm", "--filter", "@workspace/digital-x-news", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/digital-x-news", "run", "serve" ]
 
 [services.env]
 PORT = "20173"

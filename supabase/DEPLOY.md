@@ -77,7 +77,7 @@ The Expo app needs these env vars (set in Replit Secrets → already done):
 - `SUPABASE_URL` → passed as `EXPO_PUBLIC_SUPABASE_URL` at build time
 - `SUPABASE_PUBLISHABLE_KEY` → passed as `EXPO_PUBLIC_SUPABASE_ANON_KEY` at build time
 
-These are wired in `artifacts/islamnashra/package.json` dev script.
+These are wired in `artifacts/islamnashra/package.json (Digital X News)` dev script.
 
 ## 5. Express API Server
 

@@ -1,3 +1,7 @@
+/**
+ * Tab Layout — X (Twitter) style bottom navigation
+ * Clean minimal tabs with X blue active indicator
+ */
 import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { useColors } from '@/hooks/useColors';
@@ -11,13 +15,13 @@ import { SymbolView } from 'expo-symbols';
 import { useNotifications } from '@/contexts/NotificationsContext';
 import { useTheme } from '@/contexts/ThemeContext';
 
-// iOS 26 NativeTabs — liquid glass system appearance
+// iOS 26 NativeTabs
 function NativeTabLayout() {
   return (
     <NativeTabs>
       <NativeTabs.Trigger name="index">
-        <Icon sf={{ default: 'newspaper', selected: 'newspaper.fill' }} />
-        <Label>Feed</Label>
+        <Icon sf={{ default: 'house', selected: 'house.fill' }} />
+        <Label>Home</Label>
       </NativeTabs.Trigger>
       <NativeTabs.Trigger name="search">
         <Icon sf={{ default: 'magnifyingglass', selected: 'magnifyingglass' }} />
@@ -51,34 +55,38 @@ function ClassicTabLayout() {
         tabBarStyle: {
           position: 'absolute',
           backgroundColor: isIOS ? 'transparent' : colors.background,
-          borderTopWidth: isWeb ? 1 : 0,
-          borderTopColor: colors.border,
+          borderTopWidth: StyleSheet.hairlineWidth,
+          borderTopColor: colors.divider,
           elevation: 0,
+          height: Platform.OS === 'android' ? 60 : undefined,
+          paddingBottom: Platform.OS === 'android' ? 8 : undefined,
           ...(isWeb ? { height: 84 } : {}),
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontFamily: 'Inter_500Medium',
         },
         tabBarBackground: () =>
           isIOS ? (
             <BlurView
-              intensity={100}
+              intensity={95}
               tint={isDark ? 'dark' : 'light'}
               style={StyleSheet.absoluteFill}
             />
           ) : isWeb ? (
-            <View
-              style={[StyleSheet.absoluteFill, { backgroundColor: colors.background }]}
-            />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.tabBar }]} />
           ) : null,
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Feed',
-          tabBarIcon: ({ color }) =>
+          title: 'Home',
+          tabBarIcon: ({ color, focused }) =>
             isIOS ? (
-              <SymbolView name="newspaper" tintColor={color} size={24} />
+              <SymbolView name={focused ? 'house.fill' : 'house'} tintColor={color} size={24} />
             ) : (
-              <Feather name="file-text" size={22} color={color} />
+              <Ionicons name={focused ? 'home' : 'home-outline'} size={23} color={color} />
             ),
         }}
       />
@@ -99,12 +107,12 @@ function ClassicTabLayout() {
         options={{
           title: 'Alerts',
           tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
-          tabBarBadgeStyle: { backgroundColor: colors.primary, fontSize: 11 },
-          tabBarIcon: ({ color }) =>
+          tabBarBadgeStyle: { backgroundColor: colors.primary, fontSize: 10 },
+          tabBarIcon: ({ color, focused }) =>
             isIOS ? (
-              <SymbolView name="bell" tintColor={color} size={24} />
+              <SymbolView name={focused ? 'bell.fill' : 'bell'} tintColor={color} size={24} />
             ) : (
-              <Ionicons name="notifications-outline" size={22} color={color} />
+              <Ionicons name={focused ? 'notifications' : 'notifications-outline'} size={23} color={color} />
             ),
         }}
       />
@@ -112,11 +120,11 @@ function ClassicTabLayout() {
         name="settings"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) =>
+          tabBarIcon: ({ color, focused }) =>
             isIOS ? (
-              <SymbolView name="person" tintColor={color} size={24} />
+              <SymbolView name={focused ? 'person.fill' : 'person'} tintColor={color} size={24} />
             ) : (
-              <Feather name="user" size={22} color={color} />
+              <Ionicons name={focused ? 'person' : 'person-outline'} size={23} color={color} />
             ),
         }}
       />
