@@ -252,7 +252,7 @@ export default function PostDetailScreen() {
           </View>
 
           <Text style={[styles.title, { color: colors.foreground }, isRtl && styles.rtlText]}>
-            {localized!.title}
+            {localized?.title ?? ''}
           </Text>
 
           <View style={styles.statsRow}>
@@ -271,9 +271,9 @@ export default function PostDetailScreen() {
                 <Ionicons
                   name={isLiked ? 'heart' : 'heart-outline'}
                   size={14}
-                  color={isLiked ? '#e53e3e' : colors.mutedForeground}
+                  color={isLiked ? colors.destructive : colors.mutedForeground}
                 />
-                <Text style={[styles.statText, { color: isLiked ? '#e53e3e' : colors.mutedForeground }]}>
+                <Text style={[styles.statText, { color: isLiked ? colors.destructive : colors.mutedForeground }]}>
                   {formatCount(localLikes)}
                 </Text>
               </View>
@@ -283,7 +283,7 @@ export default function PostDetailScreen() {
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
           <Text style={[styles.body, { color: colors.foreground }, isRtl && styles.rtlText]}>
-            {localized!.body}
+            {localized?.body ?? ''}
           </Text>
 
           {post.sourceNote && (
@@ -343,8 +343,8 @@ export default function PostDetailScreen() {
           onPress={handleLike}
           disabled={isLiked}
         >
-          <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={22} color={isLiked ? '#e53e3e' : colors.mutedForeground} />
-          <Text style={[styles.actionText, { color: isLiked ? '#e53e3e' : colors.mutedForeground }]}>
+          <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={22} color={isLiked ? colors.destructive : colors.mutedForeground} />
+          <Text style={[styles.actionText, { color: isLiked ? colors.destructive : colors.mutedForeground }]}>
             {formatCount(localLikes)}
           </Text>
         </Pressable>

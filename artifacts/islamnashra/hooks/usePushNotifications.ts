@@ -57,7 +57,7 @@ async function setupAndroidChannel(): Promise<void> {
     description: 'اسلامی خبریں اور بریکنگ نیوز — DigitalXNews',
     importance: Notifications.AndroidImportance.MAX,
     vibrationPattern: [0, 250, 250, 250],
-    lightColor: '#1565C0',
+    lightColor: '#1D9BF0',
     sound: 'default',
     enableLights: true,
     enableVibrate: true,

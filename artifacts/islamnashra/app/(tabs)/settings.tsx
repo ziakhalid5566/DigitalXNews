@@ -167,7 +167,7 @@ const LEGAL_CONTENT = {
 4. This app may only be used for lawful and ethical purposes.
 
 5. We may update these terms from time to time.`,
-    ar: `مرحباً بكم في إسلام نشرة. باستخدام هذا التطبيق، فإنك توافق على الشروط التالية:
+    ar: `مرحباً بكم في Digital X News. باستخدام هذا التطبيق، فإنك توافق على الشروط التالية:
 
 1. جميع المحتوى الإخباري لأغراض إعلامية فقط. تحقق من المصادر الأصلية قبل اتخاذ أي قرارات مهمة.
 
@@ -233,7 +233,7 @@ Our news covers events from across the globe — the Middle East, South Asia, Af
 We publish in three languages: Urdu, Arabic, and English.
 
 Our mission is to keep the Muslim community informed about events that matter — mosques, madrassas, scholars, and the broader Ummah.`,
-    ar: `إسلام نشرة هو تطبيق إخباري إسلامي يقدم أخباراً مهمة من العالم الإسلامي للقراء في جميع أنحاء العالم.
+    ar: `Digital X News هو تطبيق إخباري إسلامي يقدم أخباراً مهمة من العالم الإسلامي للقراء في جميع أنحاء العالم.
 
 تغطي أخبارنا الأحداث من جميع أنحاء العالم — الشرق الأوسط وجنوب آسيا وأفريقيا وتركيا وجنوب شرق آسيا والمجتمعات المسلمة في الغرب.
 
@@ -519,8 +519,8 @@ export default function SettingsScreen() {
 
   const handleRateApp = () => {
     // Opens Play Store rating page
-    Linking.openURL('market://details?id=com.digitalxnews.app').catch(() =>
-      Linking.openURL('https://play.google.com/store/apps/details?id=com.digitalxnews.app')
+    Linking.openURL('market://details?id=com.digitalxnews.islamnashra').catch(() =>
+      Linking.openURL('https://play.google.com/store/apps/details?id=com.digitalxnews.islamnashra')
     );
   };
 
