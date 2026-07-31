@@ -165,7 +165,7 @@ export default function FeedScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={[feed.catScroll, isRTL && { flexDirection: 'row-reverse' }]}
+          contentContainerStyle={feed.catScroll}
           style={{ borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.divider, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.divider }}
         >
           {CATEGORIES.map((cat) => (

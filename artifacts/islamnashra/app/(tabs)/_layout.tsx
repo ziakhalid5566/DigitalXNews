@@ -4,6 +4,7 @@
  */
 import React from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '@/hooks/useColors';
 import { Feather } from '@expo/vector-icons';
 import { Ionicons } from '@expo/vector-icons';
@@ -45,6 +46,10 @@ function ClassicTabLayout() {
   const isIOS = Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
   const { unreadCount } = useNotifications();
+  const { bottom: bottomInset } = useSafeAreaInsets();
+  // Android: account for system navigation bar (≡○◁ buttons)
+  const androidPadBottom = Platform.OS === 'android' ? Math.max(bottomInset, 8) : 0;
+  const androidTabHeight = Platform.OS === 'android' ? 56 + androidPadBottom : undefined;
 
   return (
     <Tabs
@@ -58,8 +63,8 @@ function ClassicTabLayout() {
           borderTopWidth: StyleSheet.hairlineWidth,
           borderTopColor: colors.divider,
           elevation: 0,
-          height: Platform.OS === 'android' ? 60 : undefined,
-          paddingBottom: Platform.OS === 'android' ? 8 : undefined,
+          height: androidTabHeight,
+          paddingBottom: Platform.OS === 'android' ? androidPadBottom : undefined,
           ...(isWeb ? { height: 84 } : {}),
         },
         tabBarLabelStyle: {
