@@ -1,104 +1,91 @@
 /**
- * SplashAnimation — typewriter intro screen for DigitalXNews
+ * SplashAnimation — Professional Facebook-style intro screen
  *
- * Sequence (2 cycles total):
- *  1. Type "DigitalXNews" letter by letter
- *  2. Erase letter by letter
- *  3. Type "DigitalXNews" letter by letter again
- *  4. Immediately fade out → call onDone
+ * Single clean screen:
+ *  1. Fade in: logo scale-up + name appears
+ *  2. Hold for ~1.4s
+ *  3. Fade out → call onDone
+ *
+ * Total duration: ~2.2s
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Animated, Image, StyleSheet, Text, View } from 'react-native';
-
-const FULL_TEXT = 'DigitalXNews';
-const TYPE_DELAY = 110;   // ms per character typed
-const ERASE_DELAY = 65;   // ms per character erased
-const PAUSE_AFTER_TYPE = 700;
-const PAUSE_AFTER_ERASE = 350;
 
 interface Props {
   onDone: () => void;
 }
 
 export function SplashAnimation({ onDone }: Props) {
-  const [displayed, setDisplayed] = useState('');
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const cursorAnim = useRef(new Animated.Value(1)).current;
+  const fadeAnim   = useRef(new Animated.Value(0)).current;
+  const scaleAnim  = useRef(new Animated.Value(0.82)).current;
+  const textFade   = useRef(new Animated.Value(0)).current;
 
-  // Blinking cursor
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(cursorAnim, { toValue: 0, duration: 420, useNativeDriver: true }),
-        Animated.timing(cursorAnim, { toValue: 1, duration: 420, useNativeDriver: true }),
-      ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [cursorAnim]);
-
-  // Typewriter sequence — 2 typings then fade out
   useEffect(() => {
     let cancelled = false;
-    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-    async function run() {
-      // ── Cycle 1: type + erase ──
-      for (let i = 1; i <= FULL_TEXT.length; i++) {
+    // Phase 1: logo scales up + fades in
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 420,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 7,
+        tension: 60,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      if (cancelled) return;
+      // Phase 2: text fades in shortly after logo
+      Animated.timing(textFade, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
         if (cancelled) return;
-        setDisplayed(FULL_TEXT.slice(0, i));
-        await sleep(TYPE_DELAY);
-      }
-      await sleep(PAUSE_AFTER_TYPE);
-      for (let i = FULL_TEXT.length - 1; i >= 0; i--) {
-        if (cancelled) return;
-        setDisplayed(FULL_TEXT.slice(0, i));
-        await sleep(ERASE_DELAY);
-      }
-      await sleep(PAUSE_AFTER_ERASE);
+        // Phase 3: hold then fade out
+        setTimeout(() => {
+          if (cancelled) return;
+          Animated.timing(fadeAnim, {
+            toValue: 0,
+            duration: 380,
+            useNativeDriver: true,
+          }).start(() => { if (!cancelled) onDone(); });
+        }, 1200);
+      });
+    });
 
-      // ── Cycle 2: type only, then fade out immediately ──
-      for (let i = 1; i <= FULL_TEXT.length; i++) {
-        if (cancelled) return;
-        setDisplayed(FULL_TEXT.slice(0, i));
-        await sleep(TYPE_DELAY);
-      }
-
-      // Short pause then fade
-      await sleep(400);
-      if (!cancelled) {
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 450,
-          useNativeDriver: true,
-        }).start(() => { if (!cancelled) onDone(); });
-      }
-    }
-
-    run();
     return () => { cancelled = true; };
-  }, [fadeAnim, onDone]);
+  }, [fadeAnim, scaleAnim, textFade, onDone]);
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
-      {/* بسم اللہ */}
-      <Text style={styles.bismillah}>بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ</Text>
+      {/* Circular logo */}
+      <Animated.View style={[styles.logoWrap, { transform: [{ scale: scaleAnim }] }]}>
+        <Image
+          source={require('@/assets/images/icon.png')}
+          style={styles.logo}
+          resizeMode="cover"
+        />
+      </Animated.View>
 
-      {/* App icon */}
-      <Image
-        source={require('@/assets/images/icon.png')}
-        style={styles.logo}
-        resizeMode="contain"
-      />
+      {/* App name + tagline */}
+      <Animated.View style={[styles.textWrap, { opacity: textFade }]}>
+        <View style={styles.nameRow}>
+          <Text style={styles.nameWhite}>Digital</Text>
+          <Text style={styles.nameBlue}>X</Text>
+          <Text style={styles.nameWhite}>News</Text>
+        </View>
+        <Text style={styles.tagline}>Islamic News · Global Coverage</Text>
+      </Animated.View>
 
-      {/* Typewriter title — Digital(white) X(blue) News(white) */}
-      <View style={styles.titleRow}>
-        <Text style={styles.titleWhite}>{displayed.slice(0, 7)}</Text>
-        {displayed.length > 7 && <Text style={styles.titleBlue}>{displayed[7]}</Text>}
-        <Text style={styles.titleWhite}>{displayed.slice(8)}</Text>
-        <Animated.Text style={[styles.cursor, { opacity: cursorAnim }]}>|</Animated.Text>
-      </View>
+      {/* Bismillah footer */}
+      <Animated.Text style={[styles.bismillah, { opacity: textFade }]}>
+        بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ
+      </Animated.Text>
     </Animated.View>
   );
 }
@@ -109,43 +96,58 @@ const styles = StyleSheet.create({
     backgroundColor: '#080F20',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
     zIndex: 999,
   },
-  bismillah: {
-    fontSize: 14,
-    fontFamily: 'Inter_400Regular',
-    color: 'rgba(200,215,240,0.70)',
-    letterSpacing: 0.8,
-    marginBottom: 4,
+  logoWrap: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    overflow: 'hidden',
+    shadowColor: '#1D9BF0',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.55,
+    shadowRadius: 24,
+    elevation: 12,
+    marginBottom: 20,
   },
   logo: {
-    width: 90,
-    height: 90,
-    borderRadius: 20,
-    marginBottom: 4,
+    width: 100,
+    height: 100,
+    borderRadius: 50,
   },
-  titleRow: {
+  textWrap: {
+    alignItems: 'center',
+    gap: 6,
+  },
+  nameRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    minHeight: 46,
   },
-  titleWhite: {
-    fontSize: 32,
+  nameWhite: {
+    fontSize: 30,
     fontFamily: 'Inter_700Bold',
     color: '#FFFFFF',
-    letterSpacing: 0.4,
+    letterSpacing: 0.3,
   },
-  titleBlue: {
-    fontSize: 32,
+  nameBlue: {
+    fontSize: 30,
     fontFamily: 'Inter_700Bold',
-    color: '#42A5F5',
-    letterSpacing: 0.4,
+    color: '#1D9BF0',
+    letterSpacing: 0.3,
+    marginHorizontal: 1,
   },
-  cursor: {
-    fontSize: 32,
+  tagline: {
+    fontSize: 13,
     fontFamily: 'Inter_400Regular',
-    color: '#42A5F5',
-    marginLeft: 2,
+    color: 'rgba(180,200,240,0.65)',
+    letterSpacing: 0.6,
+  },
+  bismillah: {
+    position: 'absolute',
+    bottom: 54,
+    fontSize: 13,
+    fontFamily: 'Inter_400Regular',
+    color: 'rgba(180,200,240,0.45)',
+    letterSpacing: 0.8,
   },
 });

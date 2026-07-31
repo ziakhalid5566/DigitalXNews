@@ -1,7 +1,6 @@
 /**
  * Search Screen — Clean, minimal
- * Just a search bar + category filter + results (NewsCard style)
- * No trending / browse bloat — type to search, results appear instantly
+ * App UI always in English. News content language follows user preference.
  */
 import { useState, useEffect, useCallback } from 'react';
 import {
@@ -27,12 +26,6 @@ const CATS = [
   { key: 'Turkey', emoji: '🇹🇷' }, { key: 'Community', emoji: '👥' },
 ];
 
-const STR = {
-  ur: { placeholder: 'خبریں تلاش کریں...', cancel: 'منسوخ', noResults: 'کوئی نتیجہ نہیں', noResultsSub: 'دوسرے الفاظ آزمائیں', hint: 'خبریں تلاش کرنے کے لیے لکھیں', results: 'نتائج', title: 'تلاش' },
-  ar: { placeholder: 'ابحث عن الأخبار...', cancel: 'إلغاء', noResults: 'لا توجد نتائج', noResultsSub: 'جرّب كلمات أخرى', hint: 'اكتب للبحث في الأخبار', results: 'نتائج', title: 'بحث' },
-  en: { placeholder: 'Search articles...', cancel: 'Cancel', noResults: 'No results found', noResultsSub: 'Try different keywords', hint: 'Type to search all news', results: 'Results', title: 'Search' },
-} as const;
-
 function useDebounced(val: string, ms = 350): string {
   const [deb, setDeb] = useState(val);
   useEffect(() => {
@@ -46,8 +39,6 @@ export default function SearchScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { language } = useLanguage();
-  const s = STR[language];
-  const isRTL = language === 'ur' || language === 'ar';
 
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(false);
@@ -74,15 +65,15 @@ export default function SearchScreen() {
     <View style={[sc.root, { backgroundColor: colors.background }]}>
       {/* ── Header ── */}
       <View style={[sc.header, { paddingTop: insets.top + 8, backgroundColor: colors.background, borderBottomColor: colors.divider }]}>
-        <Text style={[sc.title, { color: colors.foreground }]}>{s.title}</Text>
+        <Text style={[sc.title, { color: colors.foreground }]}>Search</Text>
 
         {/* Search bar */}
         <View style={[sc.searchRow]}>
           <View style={[sc.searchBox, { backgroundColor: colors.muted, borderColor: colors.divider }]}>
             <Ionicons name="search" size={18} color={colors.mutedForeground} />
             <TextInput
-              style={[sc.input, { color: colors.foreground }, isRTL && sc.rtl]}
-              placeholder={s.placeholder}
+              style={[sc.input, { color: colors.foreground }]}
+              placeholder="Search articles..."
               placeholderTextColor={colors.mutedForeground}
               value={query}
               onChangeText={setQuery}
@@ -104,7 +95,7 @@ export default function SearchScreen() {
           </View>
           {(focused || query.length > 0) && (
             <Pressable onPress={() => { setQuery(''); setFocused(false); }} style={sc.cancelBtn}>
-              <Text style={[sc.cancelTxt, { color: colors.primary }]}>{s.cancel}</Text>
+              <Text style={[sc.cancelTxt, { color: colors.primary }]}>Cancel</Text>
             </Pressable>
           )}
         </View>
@@ -139,26 +130,22 @@ export default function SearchScreen() {
 
       {/* ── Results / Empty state ── */}
       {!hasQuery ? (
-        /* Empty state — no query yet */
         <View style={sc.emptyCenter}>
           <Ionicons name="search-outline" size={56} color={colors.mutedForeground} />
-          <Text style={[sc.emptyTitle, { color: colors.foreground }]}>{s.hint}</Text>
-          <Text style={[sc.emptySub, { color: colors.mutedForeground }]}>
-            {language === 'ur' ? '14 زمرے دستیاب ہیں' : language === 'ar' ? '١٤ فئة متاحة' : '14 categories available'}
-          </Text>
+          <Text style={[sc.emptyTitle, { color: colors.foreground }]}>Type to search all news</Text>
+          <Text style={[sc.emptySub, { color: colors.mutedForeground }]}>14 categories available</Text>
         </View>
       ) : isError ? (
         <View style={sc.emptyCenter}>
           <Ionicons name="cloud-offline-outline" size={52} color={colors.mutedForeground} />
-          <Text style={[sc.emptyTitle, { color: colors.foreground }]}>
-            {language === 'ur' ? 'تلاش ناکام' : language === 'ar' ? 'فشل البحث' : 'Search failed'}
-          </Text>
+          <Text style={[sc.emptyTitle, { color: colors.foreground }]}>Search failed</Text>
+          <Text style={[sc.emptySub, { color: colors.mutedForeground }]}>Check your connection and try again</Text>
         </View>
       ) : results.length === 0 && hasQuery && !isFetching ? (
         <View style={sc.emptyCenter}>
           <Ionicons name="document-outline" size={52} color={colors.mutedForeground} />
-          <Text style={[sc.emptyTitle, { color: colors.foreground }]}>{s.noResults}</Text>
-          <Text style={[sc.emptySub, { color: colors.mutedForeground }]}>{s.noResultsSub}</Text>
+          <Text style={[sc.emptyTitle, { color: colors.foreground }]}>No results found</Text>
+          <Text style={[sc.emptySub, { color: colors.mutedForeground }]}>Try different keywords</Text>
         </View>
       ) : (
         <FlatList
@@ -172,7 +159,7 @@ export default function SearchScreen() {
             results.length > 0 ? (
               <View style={[sc.resultsHeader, { borderBottomColor: colors.divider }]}>
                 <Text style={[sc.resultsCount, { color: colors.mutedForeground }]}>
-                  {results.length} {s.results} — "{debouncedQuery}"
+                  {results.length} results — "{debouncedQuery}"
                 </Text>
               </View>
             ) : null
@@ -193,7 +180,6 @@ const sc = StyleSheet.create({
     borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1,
   },
   input: { flex: 1, fontSize: 15, padding: 0, fontFamily: 'Inter_400Regular' },
-  rtl: { textAlign: 'right', writingDirection: 'rtl' },
   cancelBtn: { paddingHorizontal: 4 },
   cancelTxt: { fontSize: 15, fontFamily: 'Inter_500Medium' },
   catRow: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 9, gap: 7 },

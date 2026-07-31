@@ -14,6 +14,8 @@ export const userPreferencesTable = pgTable("user_preferences", {
   pushToken: text("push_token"),
   followedCategories: text("followed_categories").array().notNull().default([]),
   notificationsEnabled: boolean("notifications_enabled").notNull().default(true),
+  /** User's preferred news language: "ur" | "ar" | "en". Default Urdu. */
+  preferredLanguage: text("preferred_language").notNull().default("ur"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

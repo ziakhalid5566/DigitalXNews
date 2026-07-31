@@ -1,12 +1,8 @@
 /**
  * usePushNotifications — Real push token registration
  *
- * FIXED ISSUES:
- * 1. Android channel created BEFORE token request (required for Android 8+)
- * 2. projectId resolved from multiple sources with clear error logging
- * 3. Token re-registration on every launch ensures backend has latest token
- * 4. refreshPushToken() called after permission grant from _layout.tsx
- * 5. Added explicit error messages so debugging is easier
+ * Registers the device push token with Supabase and saves the user's
+ * preferred language so the backend can send notifications in the right language.
  */
 
 import { useEffect } from 'react';
@@ -19,6 +15,8 @@ import { Platform } from 'react-native';
 
 export const PUSH_TOKEN_KEY = 'pushToken';
 export const DEVICE_ID_KEY = 'deviceId';
+/** AsyncStorage key used by LanguageContext */
+const APP_LANGUAGE_KEY = 'app_language';
 
 const supabaseUrl =
   process.env.EXPO_PUBLIC_SUPABASE_URL ?? '';
@@ -47,8 +45,7 @@ export async function getOrCreateDeviceId(): Promise<string> {
   return id;
 }
 
-// ─── Android channel setup ────────────────────────────────────────────────────
-// MUST be called before requesting a push token on Android
+// ─── Android channel setup ─────────────────────────────────────────────────────
 export async function setupAndroidChannel(): Promise<void> {
   if (Platform.OS !== 'android') return;
   await Notifications.setNotificationChannelAsync('default', {
@@ -64,7 +61,7 @@ export async function setupAndroidChannel(): Promise<void> {
   });
 }
 
-// ─── Register token with Supabase backend ─────────────────────────────────────
+// ─── Register token + language with Supabase ──────────────────────────────────
 async function registerTokenWithBackend(deviceId: string, token: string): Promise<void> {
   const sb = getSupabase();
   if (!sb) {
@@ -72,23 +69,31 @@ async function registerTokenWithBackend(deviceId: string, token: string): Promis
     return;
   }
   try {
+    // Read the user's preferred language (set by LanguageContext, default Urdu)
+    const lang = (await AsyncStorage.getItem(APP_LANGUAGE_KEY)) ?? 'ur';
+
     const { error } = await sb
       .from('user_preferences')
       .upsert(
-        { device_id: deviceId, push_token: token, notifications_enabled: true },
+        {
+          device_id: deviceId,
+          push_token: token,
+          notifications_enabled: true,
+          preferred_language: lang,
+        },
         { onConflict: 'device_id' },
       );
     if (error) {
       console.error('[PushNotifications] Backend upsert error:', error.message);
     } else {
-      console.log('[PushNotifications] Token registered successfully for device:', deviceId.slice(0, 8));
+      console.log('[PushNotifications] Token registered for device:', deviceId.slice(0, 8), '| lang:', lang);
     }
   } catch (err) {
     console.error('[PushNotifications] Backend registration failed:', err);
   }
 }
 
-// ─── Main registration function ───────────────────────────────────────────────
+// ─── Main registration ─────────────────────────────────────────────────────────
 export interface PushRegistrationResult {
   token: string | null;
   error: string | null;
@@ -100,17 +105,14 @@ export async function registerForPushNotificationsAsync(): Promise<PushRegistrat
     return { token: null, error: 'Push notifications require a physical device' };
   }
 
-  // Step 1: Set up Android channel BEFORE asking for token
   await setupAndroidChannel();
 
-  // Step 2: Check permission (do NOT request here — done by _layout.tsx after splash)
   const { status } = await Notifications.getPermissionsAsync();
   if (status !== 'granted') {
     console.log('[PushNotifications] Permission not granted yet — status:', status);
     return { token: null, error: `Permission status: ${status}` };
   }
 
-  // Step 3: Resolve EAS project ID
   const projectId: string | undefined =
     (process.env.EXPO_PUBLIC_EAS_PROJECT_ID as string | undefined) ??
     (Constants.expoConfig?.extra as Record<string, unknown> | undefined)
@@ -140,27 +142,22 @@ export function usePushNotifications(): void {
 
     const run = async () => {
       try {
-        // Always set up Android channel on startup (idempotent)
         await setupAndroidChannel();
-
         const deviceId = await getOrCreateDeviceId();
         const cachedToken = await AsyncStorage.getItem(PUSH_TOKEN_KEY);
 
         if (cachedToken) {
-          // Re-register on every startup — ensures backend always has latest token
-          // This handles cases where the token was rotated by Expo/FCM
+          // Re-register every launch — ensures language preference stays in sync
           await registerTokenWithBackend(deviceId, cachedToken);
           return;
         }
 
-        // No cached token — try to get one (only works if permission already granted)
         const result = await registerForPushNotificationsAsync();
         if (cancelled || !result.token) return;
 
         await AsyncStorage.setItem(PUSH_TOKEN_KEY, result.token);
         await registerTokenWithBackend(deviceId, result.token);
       } catch (err) {
-        // Non-critical — app works fine without push notifications
         console.error('[PushNotifications] Startup hook error:', err);
       }
     };
@@ -171,11 +168,9 @@ export function usePushNotifications(): void {
 }
 
 // ─── Refresh token after permission is newly granted ──────────────────────────
-// Called from _layout.tsx after the OS permission dialog is accepted
 export async function refreshPushToken(): Promise<void> {
   try {
     console.log('[PushNotifications] refreshPushToken called — fetching fresh token');
-    // Clear cached token so registerForPushNotificationsAsync fetches a fresh one
     await AsyncStorage.removeItem(PUSH_TOKEN_KEY);
     const deviceId = await getOrCreateDeviceId();
     const result = await registerForPushNotificationsAsync();

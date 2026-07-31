@@ -309,14 +309,14 @@ TURKEY: domestic politics, Ottoman heritage, Turkish diaspora, Central Asia.
 COMMUNITY: Western Muslims (UK, USA, Canada, France, Germany), Muslim minority rights, halal lifestyle.
 ${BASE_SAFETY_RULES}`,
     userPrompt: `Generate {count} distinct news summaries covering Africa, Southeast Asia, Turkey, and Muslim communities.
-Each body 150-200 words per language. Cover all four regions across your articles.
+Each body 150-200 words per language. IMPORTANT: produce at least ONE article for EACH of the four regions.
 For sourceNote, use ONE real outlet appropriate to the region.
 CRITICAL — Category assignment:
 - "Africa" → African countries ONLY (Nigeria, Kenya, Senegal, Ethiopia, Tanzania, Morocco, Somalia, Sudan)
 - "Southeast Asia" → Indonesia, Malaysia, Philippines, Myanmar, Brunei, Thailand ONLY
 - "Turkey" → Turkey/Türkiye, Turkish politics, Ottoman history ONLY
 - "Community" → Western Muslim communities (UK, USA, Canada, France, Germany, Europe) ONLY`,
-    articleCount: 2,
+    articleCount: 4,
   },
 ];
 

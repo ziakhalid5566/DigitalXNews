@@ -6,11 +6,10 @@
  * 2. Content moderation
  * 3. Image fetching via Pexels for all articles
  * 4. Database insertion (Drizzle → Supabase PostgreSQL)
- * 5. Push notifications via Expo Push Service
+ * 5. Push notifications via Expo Push Service (per-user language)
  *
- * Push token source: Supabase REST API (service role key).
- * Tokens are stored by the Expo mobile app directly into Supabase.
- * Using the REST API avoids needing a direct DB password.
+ * Push notifications are sent in the user's preferred language
+ * (stored in user_preferences.preferred_language).
  */
 
 import { db, userPreferencesTable } from "@workspace/db";
@@ -52,17 +51,23 @@ function resetDailyCountIfNeeded(): void {
   }
 }
 
-// ── Supabase push-token fetcher ────────────────────────────────────────────────
-async function fetchPushTokensFromSupabase(
+// ── Push-token fetcher with language preference ────────────────────────────────
+interface TokenWithLang {
+  token: string;
+  language: string; // "ur" | "ar" | "en"
+}
+
+async function fetchTokensWithLanguage(
   category: string,
   isBreaking: boolean,
-): Promise<string[]> {
+): Promise<TokenWithLang[]> {
   try {
     const rows = await db
       .select({
         pushToken: userPreferencesTable.pushToken,
         notificationsEnabled: userPreferencesTable.notificationsEnabled,
         followedCategories: userPreferencesTable.followedCategories,
+        preferredLanguage: userPreferencesTable.preferredLanguage,
       })
       .from(userPreferencesTable)
       .where(
@@ -71,7 +76,7 @@ async function fetchPushTokensFromSupabase(
         )
       );
 
-    const tokens = rows
+    const eligible: TokenWithLang[] = rows
       .filter((p) => {
         if (!p.pushToken) return false;
         if (!p.notificationsEnabled) return false;
@@ -80,14 +85,17 @@ async function fetchPushTokensFromSupabase(
         if (cats.length === 0) return true;
         return cats.includes(category);
       })
-      .map((p) => p.pushToken as string);
+      .map((p) => ({
+        token: p.pushToken as string,
+        language: (p.preferredLanguage as string | null) ?? "ur",
+      }));
 
     logger.info(
-      { total: rows.length, eligible: tokens.length, category, isBreaking },
-      "Push tokens fetched via Drizzle",
+      { total: rows.length, eligible: eligible.length, category, isBreaking },
+      "Push tokens fetched",
     );
 
-    return tokens;
+    return eligible;
   } catch (err) {
     logger.error({ err }, "Error fetching push tokens");
     return [];
@@ -109,14 +117,12 @@ export async function runNewsGenerationJob(): Promise<void> {
     logger.info({ count: articles.length }, "News generation job: articles generated");
     resetDailyCountIfNeeded();
 
-    // Sort by significance descending — highest-scored articles get images first
     const sorted = [...articles].sort((a, b) => b.significanceScore - a.significanceScore);
 
     let published = 0;
     let flagged = 0;
 
     for (const article of sorted) {
-      // Content moderation — checks English title + body
       const mod = moderateContent(article.title_en, article.body_en);
 
       if (mod.flagged) {
@@ -139,7 +145,6 @@ export async function runNewsGenerationJob(): Promise<void> {
       const now = new Date();
       const expiresAt = new Date(now.getTime() + POST_TTL_MS);
 
-      // Image fetching — Pexels API
       let imageUrl: string | null = null;
       let hasImage = false;
 
@@ -192,7 +197,6 @@ export async function runNewsGenerationJob(): Promise<void> {
         "Post published",
       );
 
-      // Decide whether to push-notify for this article
       const shouldNotify =
         post.isBreaking ||
         ALWAYS_NOTIFY_CATEGORIES.has(post.category) ||
@@ -201,12 +205,13 @@ export async function runNewsGenerationJob(): Promise<void> {
       if (shouldNotify) {
         await notifySubscribers(
           post.id,
-          post.title,
-          post.body ?? "",
           post.category,
           post.isBreaking ?? false,
-          post.titleUr ?? undefined,
-          post.bodyUr ?? undefined,
+          {
+            en: { title: post.title, body: post.body ?? "" },
+            ur: { title: post.titleUr ?? post.title, body: post.bodyUr ?? post.body ?? "" },
+            ar: { title: post.titleAr ?? post.title, body: post.bodyAr ?? post.body ?? "" },
+          },
         );
       }
     }
@@ -217,52 +222,68 @@ export async function runNewsGenerationJob(): Promise<void> {
   }
 }
 
+/** Category prefix emoji per language */
+function getCategoryPrefix(category: string, isBreaking: boolean, lang: string): string {
+  if (isBreaking) {
+    return lang === "ar" ? "🔴 عاجل:" : lang === "en" ? "🔴 BREAKING:" : "🔴 بریکنگ:";
+  }
+  if (lang === "ar") {
+    return category === "Security" ? "🛡️ أمن:" :
+           category === "Government" ? "🏛️ حكومة:" :
+           category === "Mosques" ? "🕌 مساجد:" :
+           category === "Madrassas" ? "🎓 مدارس:" :
+           category === "Palestine" ? "🇵🇸 فلسطين:" : "📰";
+  }
+  if (lang === "en") {
+    return category === "Security" ? "🛡️ Security:" :
+           category === "Government" ? "🏛️ Government:" :
+           category === "Mosques" ? "🕌 Mosques:" :
+           category === "Madrassas" ? "🎓 Madrassas:" :
+           category === "Palestine" ? "🇵🇸 Palestine:" : "📰";
+  }
+  // Urdu (default)
+  return category === "Security" ? "🛡️ سیکیورٹی:" :
+         category === "Government" ? "🏛️ حکومت:" :
+         category === "Mosques" ? "🕌 مساجد:" :
+         category === "Madrassas" ? "🎓 مدارس:" :
+         category === "Palestine" ? "🇵🇸 فلسطین:" : "📰";
+}
+
 async function notifySubscribers(
   postId: string,
-  title: string,
-  body: string,
   category: string,
   isBreaking: boolean,
-  titleUr?: string,
-  bodyUr?: string,
+  content: Record<string, { title: string; body: string }>,
 ): Promise<void> {
   try {
-    // Fetch tokens from Supabase (where the mobile app stores them)
-    const tokens = await fetchPushTokensFromSupabase(category, isBreaking);
-
-    if (tokens.length === 0) {
+    const tokensWithLang = await fetchTokensWithLanguage(category, isBreaking);
+    if (tokensWithLang.length === 0) {
       logger.info({ category, isBreaking }, "No eligible push tokens — skipping notification");
       return;
     }
 
-    // Prefer Urdu for notification display
-    const displayTitle = titleUr?.trim() ? titleUr : title;
-    const displayBody = bodyUr?.trim() ? bodyUr : body;
+    // Group tokens by language
+    const byLang = new Map<string, string[]>();
+    for (const { token, language } of tokensWithLang) {
+      const lang = ["ur", "ar", "en"].includes(language) ? language : "ur";
+      const arr = byLang.get(lang) ?? [];
+      arr.push(token);
+      byLang.set(lang, arr);
+    }
 
-    // Category prefix emoji
-    const prefix = isBreaking
-      ? "🔴 بریکنگ:"
-      : category === "Security"
-        ? "🛡️ سیکیورٹی:"
-        : category === "Government"
-          ? "🏛️ حکومت:"
-          : category === "Mosques"
-            ? "🕌 مساجد:"
-            : category === "Madrassas"
-              ? "🎓 مدارس:"
-              : category === "Palestine"
-                ? "🇵🇸 فلسطین:"
-                : "📰";
+    // Send one batch per language
+    let totalSent = 0;
+    for (const [lang, tokens] of byLang) {
+      const c = content[lang] ?? content["ur"] ?? content["en"];
+      const prefix = getCategoryPrefix(category, isBreaking, lang);
+      const notifTitle = `${prefix} ${c.title}`;
+      const notifBody = c.body.substring(0, 120) + (c.body.length > 120 ? "…" : "");
+      await sendPushNotifications(tokens, notifTitle, notifBody, { postId });
+      totalSent += tokens.length;
+      logger.info({ lang, tokenCount: tokens.length, category }, "Push batch sent");
+    }
 
-    const notifTitle = `${prefix} ${displayTitle}`;
-    const notifBody =
-      displayBody.substring(0, 120) + (displayBody.length > 120 ? "…" : "");
-
-    await sendPushNotifications(tokens, notifTitle, notifBody, { postId });
-    logger.info(
-      { tokenCount: tokens.length, category, isBreaking },
-      "Push notifications sent",
-    );
+    logger.info({ totalSent, category, isBreaking }, "Push notifications sent");
   } catch (err) {
     logger.error({ err }, "Failed to send push notifications for post");
   }
@@ -281,14 +302,17 @@ export async function runSingleAgentJob(agentIndex: number): Promise<void> {
       return;
     }
 
+    logger.info({ agentIndex, count: articles.length }, "Single-agent job: articles generated");
     resetDailyCountIfNeeded();
-    const now = new Date();
+
+    const sorted = [...articles].sort((a, b) => b.significanceScore - a.significanceScore);
+
     let published = 0;
     let flagged = 0;
 
-    for (const article of articles) {
-      // Content moderation
+    for (const article of sorted) {
       const mod = moderateContent(article.title_en, article.body_en);
+
       if (mod.flagged) {
         await db.insert(flaggedPostsTable).values({
           title: article.title_en,
@@ -296,19 +320,23 @@ export async function runSingleAgentJob(agentIndex: number): Promise<void> {
           category: article.category,
           significanceScore: article.significanceScore,
           sourceNote: article.sourceNote,
-          flagReason: mod.reason ?? "Content moderation",
-          flaggedAt: now,
+          flagReason: mod.reason ?? "Flagged by automated content filter",
         });
         flagged++;
-        logger.warn({ title: article.title_en, reason: mod.reason }, "Article flagged");
         continue;
       }
 
-      // Image fetch
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + POST_TTL_MS);
+
       let imageUrl: string | null = null;
       let hasImage = false;
-      resetDailyCountIfNeeded();
-      if (dailyImageCount < DAILY_IMAGE_BUDGET && article.significanceScore >= IMAGE_SCORE_THRESHOLD) {
+
+      const imgEligible =
+        dailyImageCount < DAILY_IMAGE_BUDGET &&
+        article.significanceScore >= IMAGE_SCORE_THRESHOLD;
+
+      if (imgEligible) {
         const img = await fetchImage({ titleEn: article.title_en, category: article.category });
         if (img) {
           imageUrl = img.url;
@@ -317,7 +345,6 @@ export async function runSingleAgentJob(agentIndex: number): Promise<void> {
         }
       }
 
-      const expiresAt = new Date(now.getTime() + POST_TTL_MS);
       const [post] = await db
         .insert(postsTable)
         .values({
@@ -341,7 +368,6 @@ export async function runSingleAgentJob(agentIndex: number): Promise<void> {
         .returning();
 
       published++;
-      logger.info({ postId: post.id, category: post.category, agentIndex, hasImage }, "Post published");
 
       const shouldNotify =
         post.isBreaking ||
@@ -351,12 +377,13 @@ export async function runSingleAgentJob(agentIndex: number): Promise<void> {
       if (shouldNotify) {
         await notifySubscribers(
           post.id,
-          post.title,
-          post.body ?? "",
           post.category,
           post.isBreaking ?? false,
-          post.titleUr ?? undefined,
-          post.bodyUr ?? undefined,
+          {
+            en: { title: post.title, body: post.body ?? "" },
+            ur: { title: post.titleUr ?? post.title, body: post.bodyUr ?? post.body ?? "" },
+            ar: { title: post.titleAr ?? post.title, body: post.bodyAr ?? post.body ?? "" },
+          },
         );
       }
     }
