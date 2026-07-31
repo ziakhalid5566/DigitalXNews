@@ -46,7 +46,7 @@
         "expo-notifications",
         {
           "icon": "./assets/images/icon.png",
-          "color": "#1565C0",
+          "color": "#1D9BF0",
           "sounds": [],
           "androidMode": "default",
           "androidCollapsedTitle": "DigitalXNews"

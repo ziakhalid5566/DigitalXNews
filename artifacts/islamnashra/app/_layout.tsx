@@ -59,7 +59,7 @@ function AppWithPush({ splashDone }: { splashDone: boolean }) {
     if (!splashDone || askedRef.current) return;
     askedRef.current = true;
 
-    const ASKED_KEY = '@notif_permission_asked_v3';
+    const ASKED_KEY = '@notif_permission_asked_v4';
 
     (async () => {
       try {

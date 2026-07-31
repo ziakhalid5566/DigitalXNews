@@ -24,41 +24,35 @@ import type { Post } from '@/lib/types';
 import { useLanguage, type Language } from '@/contexts/LanguageContext';
 import { useNotifications } from '@/contexts/NotificationsContext';
 
-// ─── Categories ───────────────────────────────────────────────────────────────
+// ─── Categories (always English labels regardless of app language) ─────────────
 const CATEGORIES = [
-  { key: 'All',            labelUr: 'سب',         labelAr: 'الكل',           labelEn: 'For You'        },
-  { key: 'World',          labelUr: 'World',       labelAr: 'العالم',         labelEn: 'World'          },
-  { key: 'Palestine',      labelUr: 'Palestine',   labelAr: 'فلسطين',         labelEn: 'Palestine'      },
-  { key: 'South Asia',     labelUr: 'South Asia',  labelAr: 'جنوب آسيا',     labelEn: 'South Asia'     },
-  { key: 'Economy',        labelUr: 'معیشت',       labelAr: 'الاقتصاد',       labelEn: 'Economy'        },
-  { key: 'Government',     labelUr: 'حکومت',       labelAr: 'الحكومة',        labelEn: 'Govt'           },
-  { key: 'Security',       labelUr: 'سیکیورٹی',   labelAr: 'الأمن',          labelEn: 'Security'       },
-  { key: 'Scholars',       labelUr: 'علماء',       labelAr: 'العلماء',        labelEn: 'Scholars'       },
-  { key: 'Mosques',        labelUr: 'مساجد',       labelAr: 'المساجد',        labelEn: 'Mosques'        },
-  { key: 'Madrassas',      labelUr: 'مدارس',       labelAr: 'المدارس',        labelEn: 'Madrassas'      },
-  { key: 'Africa',         labelUr: 'افریقہ',      labelAr: 'أفريقيا',        labelEn: 'Africa'         },
-  { key: 'Southeast Asia', labelUr: 'SE Asia',     labelAr: 'جنوب شرق آسيا', labelEn: 'SE Asia'        },
-  { key: 'Turkey',         labelUr: 'ترکی',        labelAr: 'تركيا',          labelEn: 'Turkey'         },
-  { key: 'Community',      labelUr: 'کمیونٹی',     labelAr: 'المجتمع',        labelEn: 'Community'      },
+  { key: 'All',            emoji: '✨', label: 'For You'     },
+  { key: 'World',          emoji: '🌍', label: 'World'       },
+  { key: 'Palestine',      emoji: '🇵🇸', label: 'Palestine'  },
+  { key: 'South Asia',     emoji: '🌏', label: 'S. Asia'     },
+  { key: 'Economy',        emoji: '💰', label: 'Economy'     },
+  { key: 'Government',     emoji: '🏛️', label: 'Govt'        },
+  { key: 'Security',       emoji: '🛡️', label: 'Security'    },
+  { key: 'Scholars',       emoji: '📚', label: 'Scholars'    },
+  { key: 'Mosques',        emoji: '🕌', label: 'Mosques'     },
+  { key: 'Madrassas',      emoji: '🎓', label: 'Madrassas'   },
+  { key: 'Africa',         emoji: '🌍', label: 'Africa'      },
+  { key: 'Southeast Asia', emoji: '🏝️', label: 'SE Asia'     },
+  { key: 'Turkey',         emoji: '🇹🇷', label: 'Turkey'     },
+  { key: 'Community',      emoji: '👥', label: 'Community'   },
 ];
 
-function getCatLabel(cat: typeof CATEGORIES[0], lang: Language) {
-  if (lang === 'ar') return cat.labelAr;
-  if (lang === 'ur') return cat.labelUr;
-  return cat.labelEn;
-}
-
 // ─── Logo ─────────────────────────────────────────────────────────────────────
-function DXNLogo() {
+function DXNLogo({ fgColor }: { fgColor: string }) {
   return (
     <View style={logo.wrap}>
       <View style={logo.badge}>
         <Text style={logo.badgeD}>D</Text>
         <Text style={logo.badgeX}>X</Text>
       </View>
-      <Text style={logo.text}>Digital </Text>
+      <Text style={[logo.text, { color: fgColor }]}>Digital </Text>
       <Text style={logo.textBlue}>X</Text>
-      <Text style={logo.text}> News</Text>
+      <Text style={[logo.text, { color: fgColor }]}> News</Text>
     </View>
   );
 }
@@ -72,19 +66,19 @@ const logo = StyleSheet.create({
   },
   badgeD: { fontSize: 11, fontFamily: 'Inter_700Bold', color: '#fff' },
   badgeX: { fontSize: 11, fontFamily: 'Inter_700Bold', color: '#000' },
-  text: { fontSize: 18, fontFamily: 'Inter_700Bold', color: '#FFFFFF' },
+  text: { fontSize: 18, fontFamily: 'Inter_700Bold' },
   textBlue: { fontSize: 18, fontFamily: 'Inter_700Bold', color: '#1D9BF0' },
 });
 
 // ─── Category Tab ─────────────────────────────────────────────────────────────
-function CatTab({ cat, lang, active, onPress, colors }: {
-  cat: typeof CATEGORIES[0]; lang: Language; active: boolean;
+function CatTab({ cat, active, onPress, colors }: {
+  cat: typeof CATEGORIES[0]; active: boolean;
   onPress: () => void; colors: ReturnType<typeof useColors>;
 }) {
   return (
     <Pressable onPress={onPress} style={ct.wrap}>
       <Text style={[ct.label, { color: active ? colors.foreground : colors.mutedForeground }]}>
-        {getCatLabel(cat, lang)}
+        {cat.emoji} {cat.label}
       </Text>
       {active && <View style={[ct.bar, { backgroundColor: colors.primary }]} />}
     </Pressable>
@@ -149,7 +143,7 @@ export default function FeedScreen() {
       {/* ── Header ── */}
       <View style={[feed.headerArea, { paddingTop: insets.top, backgroundColor: colors.background }]}>
         <View style={feed.appBar}>
-          <DXNLogo />
+          <DXNLogo fgColor={colors.foreground} />
           <View style={feed.appBarRight}>
             <View style={[feed.langBadge, { backgroundColor: colors.primary + '22', borderColor: colors.primary + '44' }]}>
               <Text style={[feed.langTxt, { color: colors.primary }]}>{language.toUpperCase()}</Text>
@@ -176,7 +170,7 @@ export default function FeedScreen() {
         >
           {CATEGORIES.map((cat) => (
             <CatTab
-              key={cat.key} cat={cat} lang={language}
+              key={cat.key} cat={cat}
               active={activeCategory === cat.key}
               onPress={() => handleCategorySelect(cat.key)}
               colors={colors}

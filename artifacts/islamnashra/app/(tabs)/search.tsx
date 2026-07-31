@@ -130,7 +130,7 @@ export default function SearchScreen() {
             >
               <Text style={sc.catEmoji}>{c.emoji}</Text>
               <Text style={[sc.catLabel, { color: cat === c.key ? '#fff' : colors.mutedForeground }]}>
-                {c.key === 'All' ? (language === 'ur' ? 'سب' : language === 'ar' ? 'الكل' : 'All') : c.key}
+                {c.key === 'All' ? 'All' : c.key === 'Southeast Asia' ? 'SE Asia' : c.key === 'South Asia' ? 'S. Asia' : c.key}
               </Text>
             </Pressable>
           ))}

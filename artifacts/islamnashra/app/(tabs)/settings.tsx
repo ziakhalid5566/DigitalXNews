@@ -349,10 +349,10 @@ function LegalModal({
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={[ss.modalRoot, { backgroundColor: colors.background }]}>
-        <View style={[ss.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 8, backgroundColor: colors.headerGradientStart }]}>
-          <Text style={ss.modalTitle}>{title}</Text>
+        <View style={[ss.modalHeader, { borderBottomColor: colors.border, paddingTop: insets.top + 8, backgroundColor: colors.background }]}>
+          <Text style={[ss.modalTitle, { color: colors.foreground }]}>{title}</Text>
           <Pressable onPress={onClose} hitSlop={12}>
-            <Ionicons name="close" size={24} color="#fff" />
+            <Ionicons name="close" size={24} color={colors.foreground} />
           </Pressable>
         </View>
         <ScrollView contentContainerStyle={ss.modalBody} showsVerticalScrollIndicator={false}>
@@ -538,8 +538,8 @@ export default function SettingsScreen() {
   return (
     <View style={[ss.root, { backgroundColor: colors.background }]}>
       {/* ── Header bar ── */}
-      <View style={[ss.headerBar, { paddingTop: insets.top + 8, backgroundColor: colors.headerGradientStart }]}>
-        <Text style={ss.headerTitle}>{s.title}</Text>
+      <View style={[ss.headerBar, { paddingTop: insets.top + 8, backgroundColor: colors.background, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }]}>
+        <Text style={[ss.headerTitle, { color: colors.foreground }]}>{s.title}</Text>
       </View>
 
       <ScrollView
@@ -559,9 +559,9 @@ export default function SettingsScreen() {
             </View>
             <View style={[ss.profileText, isRTL && ss.profileTextRTL]}>
               <Text style={[ss.profileName, { color: colors.cardForeground }, isRTL && ss.rtl]}>
-                DigitalXNews
+                Digital X News
               </Text>
-              <Text style={[ss.profileSub, { color: colors.primary }]}>DigitalXNews</Text>
+              <Text style={[ss.profileSub, { color: colors.mutedForeground }]}>Islamic News · 3 Languages</Text>
               <View style={[ss.versionBadge, { backgroundColor: colors.primary + '18' }]}>
                 <Text style={[ss.versionTxt, { color: colors.primary }]}>{s.version} {APP_VERSION}</Text>
               </View>
@@ -785,7 +785,7 @@ const ss = StyleSheet.create({
   root: { flex: 1 },
 
   headerBar: { paddingHorizontal: 16, paddingBottom: 14, alignItems: 'center' },
-  headerTitle: { fontSize: 18, fontFamily: 'Inter_700Bold', color: '#fff' },
+  headerTitle: { fontSize: 18, fontFamily: 'Inter_700Bold' },
 
   scrollContent: { paddingTop: 0 },
 
@@ -829,7 +829,7 @@ const ss = StyleSheet.create({
   /* Legal modal */
   modalRoot: { flex: 1 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingBottom: 14, borderBottomWidth: StyleSheet.hairlineWidth },
-  modalTitle: { fontSize: 18, fontFamily: 'Inter_700Bold', color: '#fff', flex: 1 },
+  modalTitle: { fontSize: 18, fontFamily: 'Inter_700Bold', flex: 1 },
   modalBody: { padding: 20 },
   modalBodyTxt: { fontSize: 15, fontFamily: 'Inter_400Regular', lineHeight: 26 },
 });
