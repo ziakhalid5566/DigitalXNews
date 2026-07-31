@@ -11,7 +11,7 @@ import {
   Inter_700Bold,
   useFonts,
 } from '@expo-google-fonts/inter';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 
@@ -46,14 +46,47 @@ function RootLayoutNav() {
 }
 
 /**
- * Handles push notification registration.
+ * Handles push notification registration and navigation on tap.
  * Permission is asked AFTER the splash animation finishes so the user
  * sees the app UI first — this dramatically improves accept rates.
+ *
+ * Notification tap handling covers three cases:
+ *  1. App in foreground — addNotificationResponseReceivedListener fires
+ *  2. App in background — addNotificationResponseReceivedListener fires on resume
+ *  3. App closed (cold start) — useLastNotificationResponse picks it up after mount
  */
 function AppWithPush({ splashDone }: { splashDone: boolean }) {
   usePushNotifications();
+  const router = useRouter();
   const askedRef = useRef(false);
+  const handledLastResponseRef = useRef(false);
 
+  // ── Handle notification TAP (foreground + background → foreground) ───────────
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
+      const postId = response.notification.request.content.data?.postId as string | undefined;
+      if (postId) {
+        router.push(`/post/${postId}` as never);
+      }
+    });
+    return () => sub.remove();
+  }, [router]);
+
+  // ── Handle cold-start: app opened BY tapping a notification ─────────────────
+  const lastResponse = Notifications.useLastNotificationResponse();
+  useEffect(() => {
+    if (!lastResponse || handledLastResponseRef.current) return;
+    handledLastResponseRef.current = true;
+    const postId = lastResponse.notification.request.content.data?.postId as string | undefined;
+    if (postId) {
+      // Small delay so the router tree is fully mounted before navigating
+      setTimeout(() => {
+        router.push(`/post/${postId}` as never);
+      }, 300);
+    }
+  }, [lastResponse, router]);
+
+  // ── Permission request after splash ─────────────────────────────────────────
   useEffect(() => {
     // Only ask once, and only AFTER the splash is gone
     if (!splashDone || askedRef.current) return;
