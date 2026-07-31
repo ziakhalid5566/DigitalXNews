@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import {
-  View, Text, FlatList, StyleSheet, Pressable,
+  View, Text, FlatList, StyleSheet, Pressable, Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -116,17 +116,25 @@ function NotifItem({ item, s, colors, isRTL, onPress }: {
           <View style={[styles.unreadDot, { backgroundColor: isBreaking ? colors.destructive : colors.primary }]} />
         )}
 
-        {/* Icon */}
-        <View style={[
-          styles.iconWrap,
-          { backgroundColor: isBreaking ? colors.destructive + '20' : colors.primary + '18' },
-        ]}>
-          <Ionicons
-            name={isBreaking ? 'alert-circle' : 'notifications'}
-            size={20}
-            color={isBreaking ? colors.destructive : colors.primary}
+        {/* Thumbnail image or icon fallback */}
+        {item.imageUrl ? (
+          <Image
+            source={{ uri: item.imageUrl }}
+            style={[styles.thumbnail, { borderRadius: 10 }]}
+            resizeMode="cover"
           />
-        </View>
+        ) : (
+          <View style={[
+            styles.iconWrap,
+            { backgroundColor: isBreaking ? colors.destructive + '20' : colors.primary + '18' },
+          ]}>
+            <Ionicons
+              name={isBreaking ? 'alert-circle' : 'notifications'}
+              size={20}
+              color={isBreaking ? colors.destructive : colors.primary}
+            />
+          </View>
+        )}
 
         {/* Text */}
         <View style={[styles.textBlock, isRTL && { alignItems: 'flex-end' }]}>
@@ -248,7 +256,7 @@ export default function NotificationsScreen() {
       ) : (
         <FlatList
           data={flatData}
-          keyExtractor={(item, index) =>
+          keyExtractor={(item) =>
             item.type === 'header' ? `header-${item.label}` : item.data.id
           }
           renderItem={({ item }) =>
@@ -304,6 +312,9 @@ const styles = StyleSheet.create({
   unreadDot: {
     width: 8, height: 8, borderRadius: 4,
     position: 'absolute', top: 4, left: 0, zIndex: 1,
+  },
+  thumbnail: {
+    width: 44, height: 44, flexShrink: 0,
   },
   iconWrap: {
     width: 44, height: 44, borderRadius: 22,
