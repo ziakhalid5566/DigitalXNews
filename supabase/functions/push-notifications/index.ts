@@ -3,7 +3,7 @@
  *
  * Item 5: Dedicated notification agent — separate from news writing agents.
  * Sends push notifications to all subscribed users for breaking or
- * high-significance news published in the last 10 minutes.
+ * high-significance news published in the last LOOKBACK_MINUTES minutes.
  *
  * Called by pg_cron after each news-generation run (every 5 minutes).
  * See migrations/00002_pg_cron.sql for scheduling.
@@ -14,6 +14,16 @@
  *   This ensures no overlap and gives the news agent time to finish.
  *
  * Item 8: Notification titles use no AI branding — just the news headline.
+ *
+ * Item 9 (fix): Dedup + per-user language.
+ *   - LOOKBACK_MINUTES (30) is intentionally wider than the 5-minute cron
+ *     interval so a missed/late run doesn't skip a post. Duplicate sends
+ *     across overlapping windows are prevented by `posts.notified_at`:
+ *     a post is only ever picked up once (`notified_at is null`), and is
+ *     stamped immediately after processing.
+ *   - Each subscriber is sent the notification in their own
+ *     `preferred_language` (title_ur / title_ar / title), instead of
+ *     always sending the English title to everyone.
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -23,8 +33,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-/** How far back to look for new posts to notify about (in minutes). */
-const LOOKBACK_MINUTES = 10;
+/**
+ * How far back to look for new posts to notify about (in minutes).
+ * Wider than the 5-minute cron cadence on purpose — `notified_at` (not
+ * this window) is what prevents duplicate sends, so it's safe to widen
+ * this as a safety net for delayed cron runs.
+ */
+const LOOKBACK_MINUTES = 30;
 
 /** Only notify for posts with significance >= this threshold (or is_breaking). */
 const MIN_SIGNIFICANCE = 7;
@@ -32,10 +47,13 @@ const MIN_SIGNIFICANCE = 7;
 /** Maximum batch size for Expo push API (limit: 100 per request). */
 const EXPO_BATCH_SIZE = 100;
 
+type Lang = "ur" | "en" | "ar";
+
 interface PushToken {
   push_token: string;
   followed_categories: string[] | null;
   notifications_enabled: boolean;
+  preferred_language: Lang | null;
 }
 
 interface Post {
@@ -44,10 +62,23 @@ interface Post {
   body: string;
   title_ur: string | null;
   title_ar: string | null;
+  body_ur: string | null;
+  body_ar: string | null;
   category: string;
   is_breaking: boolean;
   significance_score: number;
   published_at: string;
+}
+
+/** Pick the title/body for a given language, falling back to English. */
+function localize(post: Post, lang: Lang): { title: string; body: string } {
+  if (lang === "ur") {
+    return { title: post.title_ur ?? post.title, body: post.body_ur ?? post.body };
+  }
+  if (lang === "ar") {
+    return { title: post.title_ar ?? post.title, body: post.body_ar ?? post.body };
+  }
+  return { title: post.title, body: post.body };
 }
 
 async function sendExpoBatch(messages: object[]): Promise<void> {
@@ -95,12 +126,17 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // Step 1: Find recent breaking/significant posts
+  // Step 1: Find recent breaking/significant posts that have NOT been
+  // notified yet (notified_at is null). This is what actually prevents
+  // duplicate sends — the time window above is just a safety net.
   const cutoff = new Date(Date.now() - LOOKBACK_MINUTES * 60 * 1000).toISOString();
 
   const { data: recentPosts, error: postsError } = await supabase
     .from("posts")
-    .select("id, title, body, title_ur, title_ar, category, is_breaking, significance_score, published_at")
+    .select(
+      "id, title, body, title_ur, title_ar, body_ur, body_ar, category, is_breaking, significance_score, published_at",
+    )
+    .is("notified_at", null)
     .gte("published_at", cutoff)
     .or(`is_breaking.eq.true,significance_score.gte.${MIN_SIGNIFICANCE}`)
     .order("published_at", { ascending: false });
@@ -127,7 +163,7 @@ Deno.serve(async (req) => {
   // Step 2: Load all subscribed user tokens
   const { data: prefRows, error: prefsError } = await supabase
     .from("user_preferences")
-    .select("push_token, followed_categories, notifications_enabled")
+    .select("push_token, followed_categories, notifications_enabled, preferred_language")
     .eq("notifications_enabled", true)
     .not("push_token", "is", null);
 
@@ -152,44 +188,42 @@ Deno.serve(async (req) => {
     );
   }
 
-  // Step 3: Build notification messages
-  // Send one notification per qualifying post (most recent first)
-  // Each user gets at most one notification in this run (for the most important post)
+  // Step 3: Build notification messages — one per (post, subscriber),
+  // localized to each subscriber's preferred_language (default Urdu,
+  // matching the app's default).
   const allMessages: object[] = [];
   let totalNotified = 0;
+  const processedPostIds: string[] = [];
 
   for (const post of posts) {
-    // Build title: use plain news headline — no AI branding (Item 8)
-    const title = post.is_breaking
-      ? `🔴 ${post.title}`
-      : `📰 ${post.title}`;
-
-    const bodySnippet = post.body.substring(0, 120);
-
     // Filter tokens that should receive this notification
-    const eligibleTokens = prefs
-      .filter((p) => {
-        if (post.is_breaking) return true; // Breaking goes to everyone
-        const cats = p.followed_categories;
-        if (!cats || cats.length === 0) return true; // No preference = receives all
-        return cats.includes(post.category);
-      })
-      .map((p) => p.push_token);
+    const eligiblePrefs = prefs.filter((p) => {
+      if (post.is_breaking) return true; // Breaking goes to everyone
+      const cats = p.followed_categories;
+      if (!cats || cats.length === 0) return true; // No preference = receives all
+      return cats.includes(post.category);
+    });
 
-    const messages = eligibleTokens.map((token) => ({
-      to: token,
-      sound: "default",
-      title,
-      body: bodySnippet,
-      data: { postId: post.id, category: post.category },
-      channelId: "default",
-    }));
+    for (const pref of eligiblePrefs) {
+      const lang: Lang = pref.preferred_language ?? "ur";
+      const { title: localizedTitle, body: localizedBody } = localize(post, lang);
+      const title = post.is_breaking ? `🔴 ${localizedTitle}` : `📰 ${localizedTitle}`;
 
-    allMessages.push(...messages);
-    totalNotified += messages.length;
+      allMessages.push({
+        to: pref.push_token,
+        sound: "default",
+        title,
+        body: localizedBody.substring(0, 120),
+        data: { postId: post.id, category: post.category },
+        channelId: "default",
+      });
+    }
+
+    totalNotified += eligiblePrefs.length;
+    processedPostIds.push(post.id);
 
     console.log(
-      `[PushAgent] Post "${post.title.slice(0, 50)}" → ${messages.length} recipients` +
+      `[PushAgent] Post "${post.title.slice(0, 50)}" → ${eligiblePrefs.length} recipients` +
       ` (breaking: ${post.is_breaking}, score: ${post.significance_score})`,
     );
   }
@@ -197,6 +231,18 @@ Deno.serve(async (req) => {
   // Step 4: Send all messages in batches
   if (allMessages.length > 0) {
     await sendExpoBatch(allMessages);
+  }
+
+  // Step 5: Stamp every processed post as notified — even if it had 0
+  // eligible recipients — so it is never picked up again on a later run.
+  if (processedPostIds.length > 0) {
+    const { error: stampError } = await supabase
+      .from("posts")
+      .update({ notified_at: new Date().toISOString() })
+      .in("id", processedPostIds);
+    if (stampError) {
+      console.error("[PushAgent] Failed to stamp notified_at:", stampError.message);
+    }
   }
 
   console.log(`[PushAgent] Complete: ${totalNotified} total notifications sent for ${posts.length} post(s)`);

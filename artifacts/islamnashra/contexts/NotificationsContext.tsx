@@ -8,12 +8,19 @@
  *  - Foreground:          addNotificationReceivedListener → saved immediately.
  *  - Background/killed tap: addNotificationResponseReceivedListener → saved on tap.
  *  - Background/killed NO tap (app opened directly): Supabase sync on mount fills
- *    the gap — queries posts from the last 72 h that qualify as notifications and
- *    merges any that are not already stored locally.
+ *    the gap — queries posts that qualify as notifications and merges any that
+ *    are not already stored locally.
  *  - Cold-start tap:     getLastNotificationResponseAsync() on mount catches the
  *    notification response that fired before the listener was registered.
  *
  * Auto-expiry: notifications older than 72 hours are pruned on every load.
+ *
+ * Install-date gating (fix): a fresh install must never backfill news that
+ * was published before the user installed the app. `installedAt` is
+ * recorded once on first launch and persists across app opens (it is only
+ * ever set once). The Supabase sync cutoff is the later of
+ * `now - 72h` and `installedAt`, so a brand-new install starts with an
+ * empty list and only ever sees notifications from after install time.
  */
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -21,6 +28,8 @@ import * as Notifications from 'expo-notifications';
 import { supabase } from '@/lib/supabase';
 
 const STORAGE_KEY = '@notifications_history_v2';
+/** Recorded once on first launch — never overwritten afterwards. */
+const INSTALL_KEY = '@app_installed_at';
 const MAX_STORED = 100;
 /** Notifications older than this are pruned automatically (matches post expiry). */
 const TTL_MS = 72 * 60 * 60 * 1000; // 72 hours
@@ -57,6 +66,19 @@ const Ctx = createContext<NotificationsCtx>({
 function pruneExpired(list: StoredNotification[]): StoredNotification[] {
   const cutoff = Date.now() - TTL_MS;
   return list.filter((n) => new Date(n.receivedAt).getTime() > cutoff);
+}
+
+/**
+ * Returns the timestamp (ms) the app was first installed/opened, recording
+ * it on first call and reusing the same value forever after. This is what
+ * stops a fresh install from backfilling news published before install.
+ */
+async function getOrSetInstalledAt(): Promise<number> {
+  const stored = await AsyncStorage.getItem(INSTALL_KEY);
+  if (stored) return Number(stored);
+  const now = Date.now();
+  await AsyncStorage.setItem(INSTALL_KEY, String(now));
+  return now;
 }
 
 /** Build a StoredNotification from expo-notifications content fields. */
@@ -98,20 +120,25 @@ async function persistEntry(
 }
 
 /**
- * Fetch qualifying posts from Supabase for the last 72 h and merge any that
- * are not already in the local list.  This fills the gap for notifications
- * that arrived while the app was in the background and the user opened the
- * app directly (without tapping the notification).
+ * Fetch qualifying posts from Supabase published after `sinceMs` and merge
+ * any that are not already in the local list. `sinceMs` is the later of
+ * (now - 72h) and the app's install time, so a fresh install never
+ * backfills notifications from before the user installed the app.  This
+ * fills the gap for notifications that arrived while the app was in the
+ * background and the user opened the app directly (without tapping the
+ * notification).
  */
 async function syncFromSupabase(
   existing: StoredNotification[],
+  sinceMs: number,
+  appLang: string,
 ): Promise<StoredNotification[]> {
   try {
-    const cutoff = new Date(Date.now() - TTL_MS).toISOString();
+    const cutoff = new Date(sinceMs).toISOString();
     const { data: posts, error } = await supabase
       .from('posts')
       .select(
-        'id, title, body, title_ur, title_ar, is_breaking, significance_score, published_at',
+        'id, title, body, title_ur, title_ar, body_ur, body_ar, is_breaking, significance_score, published_at',
       )
       .gte('published_at', cutoff)
       .or(`is_breaking.eq.true,significance_score.gte.${MIN_SIGNIFICANCE}`)
@@ -126,12 +153,19 @@ async function syncFromSupabase(
     for (const post of posts) {
       if (existingPostIds.has(post.id)) continue;
 
-      // Use Urdu title when available (primary language of the app)
-      const rawTitle = (post.title_ur as string | null) ?? (post.title as string) ?? '';
+      // Match the title/body language to what this device actually shows
+      // elsewhere in the app (fixes mismatched-language notifications).
+      const rawTitle =
+        appLang === 'en' ? (post.title as string) ?? ''
+        : appLang === 'ar' ? (post.title_ar as string | null) ?? (post.title as string) ?? ''
+        : (post.title_ur as string | null) ?? (post.title as string) ?? '';
       const displayTitle = (post.is_breaking as boolean)
         ? `🔴 ${rawTitle}`
         : `📰 ${rawTitle}`;
-      const rawBody = (post.body as string | null) ?? '';
+      const rawBody =
+        appLang === 'en' ? (post.body as string | null) ?? ''
+        : appLang === 'ar' ? (post.body_ar as string | null) ?? (post.body as string | null) ?? ''
+        : (post.body_ur as string | null) ?? (post.body as string | null) ?? '';
 
       newEntries.push({
         id: `synced-${post.id as string}`,
@@ -191,8 +225,13 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
         }
 
         // 4. Supabase sync — fills in all background/killed notifications the user
-        //    never tapped (the most common gap on Android).
-        const synced = await syncFromSupabase(stored);
+        //    never tapped (the most common gap on Android). Bounded by install
+        //    time so a fresh install doesn't backfill pre-install news, and
+        //    localized to the device's own language setting.
+        const installedAtMs = await getOrSetInstalledAt();
+        const sinceMs = Math.max(Date.now() - TTL_MS, installedAtMs);
+        const appLang = (await AsyncStorage.getItem('app_language')) ?? 'ur';
+        const synced = await syncFromSupabase(stored, sinceMs, appLang);
         if (synced !== stored) {
           await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(synced));
         }
