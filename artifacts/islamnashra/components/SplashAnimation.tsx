@@ -2,13 +2,14 @@
  * SplashAnimation — Professional Facebook-style intro screen
  *
  * Single clean screen:
- *  1. Fade in: logo scale-up + name appears
- *  2. Hold for ~1.4s
- *  3. Fade out → call onDone
+ * 1. Fade in: logo scale-up + name appears
+ * 2. Three animated loading dots pulse below the name while the app
+ *    finishes initializing (fonts, session, etc.)
+ * 3. Hold for ~1.4s
+ * 4. Fade out → call onDone
  *
  * Total duration: ~2.2s
  */
-
 import React, { useEffect, useRef } from 'react';
 import { Animated, Image, StyleSheet, Text, View } from 'react-native';
 
@@ -16,10 +17,38 @@ interface Props {
   onDone: () => void;
 }
 
+function LoadingDots({ opacity }: { opacity: Animated.Value }) {
+  const dot1 = useRef(new Animated.Value(0.3)).current;
+  const dot2 = useRef(new Animated.Value(0.3)).current;
+  const dot3 = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    const pulse = (dot: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(dot, { toValue: 1, duration: 350, useNativeDriver: true }),
+          Animated.timing(dot, { toValue: 0.3, duration: 350, useNativeDriver: true }),
+        ]),
+      );
+    const anims = [pulse(dot1, 0), pulse(dot2, 150), pulse(dot3, 300)];
+    anims.forEach((a) => a.start());
+    return () => anims.forEach((a) => a.stop());
+  }, [dot1, dot2, dot3]);
+
+  return (
+    <Animated.View style={[styles.dotsRow, { opacity }]}>
+      <Animated.View style={[styles.dot, { opacity: dot1 }]} />
+      <Animated.View style={[styles.dot, { opacity: dot2 }]} />
+      <Animated.View style={[styles.dot, { opacity: dot3 }]} />
+    </Animated.View>
+  );
+}
+
 export function SplashAnimation({ onDone }: Props) {
-  const fadeAnim   = useRef(new Animated.Value(0)).current;
-  const scaleAnim  = useRef(new Animated.Value(0.82)).current;
-  const textFade   = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.82)).current;
+  const textFade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     let cancelled = false;
@@ -39,7 +68,7 @@ export function SplashAnimation({ onDone }: Props) {
       }),
     ]).start(() => {
       if (cancelled) return;
-      // Phase 2: text fades in shortly after logo
+      // Phase 2: text + loading dots fade in shortly after logo
       Animated.timing(textFade, {
         toValue: 1,
         duration: 300,
@@ -53,39 +82,39 @@ export function SplashAnimation({ onDone }: Props) {
             toValue: 0,
             duration: 380,
             useNativeDriver: true,
-          }).start(() => { if (!cancelled) onDone(); });
+          }).start(() => {
+            if (!cancelled) onDone();
+          });
         }, 1200);
       });
     });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [fadeAnim, scaleAnim, textFade, onDone]);
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
       {/* Circular logo */}
       <Animated.View style={[styles.logoWrap, { transform: [{ scale: scaleAnim }] }]}>
-        <Image
-          source={require('@/assets/images/icon.png')}
-          style={styles.logo}
-          resizeMode="cover"
-        />
+        <Image source={require('../assets/images/icon.png')} style={styles.logo} resizeMode="cover" />
       </Animated.View>
 
       {/* App name + tagline */}
       <Animated.View style={[styles.textWrap, { opacity: textFade }]}>
         <View style={styles.nameRow}>
-          <Text style={styles.nameWhite}>Digital</Text>
-          <Text style={styles.nameBlue}>X</Text>
-          <Text style={styles.nameWhite}>News</Text>
+          <Text style={styles.nameWhite}>Digital </Text>
+          <Text style={styles.nameBlue}>X News</Text>
         </View>
         <Text style={styles.tagline}>Islamic News · Global Coverage</Text>
+
+        {/* Loading indicator */}
+        <LoadingDots opacity={textFade} />
       </Animated.View>
 
       {/* Bismillah footer */}
-      <Animated.Text style={[styles.bismillah, { opacity: textFade }]}>
-        بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ
-      </Animated.Text>
+      <Text style={styles.bismillah}>بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ</Text>
     </Animated.View>
   );
 }
@@ -141,6 +170,17 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter_400Regular',
     color: 'rgba(180,200,240,0.65)',
     letterSpacing: 0.6,
+  },
+  dotsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 14,
+  },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#1D9BF0',
   },
   bismillah: {
     position: 'absolute',
