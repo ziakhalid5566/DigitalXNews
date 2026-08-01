@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Al-Madaris",
-    "slug": "al-madaris",
+    "name": "DigitalXNews",
+    "slug": "digital-x-news",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "almadaris",
+    "scheme": "digitalxnews",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -15,10 +15,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.almadaris.app"
+      "bundleIdentifier": "com.digitalxnews.islamnashra"
     },
     "android": {
-      "package": "com.almadaris.app",
+      "package": "com.digitalxnews.islamnashra",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
@@ -42,7 +42,7 @@
         "color": "#1D9BF0",
         "sounds": [],
         "androidMode": "default",
-        "androidCollapsedTitle": "Al-Madaris"
+        "androidCollapsedTitle": "DigitalXNews"
       }]
     ],
     "extra": {
