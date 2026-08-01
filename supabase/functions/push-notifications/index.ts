@@ -9,23 +9,31 @@
  * See migrations/00002_pg_cron.sql for scheduling.
  *
  * Item 6: Part of the strict sequential agent chain:
- *   news-generation runs at :00, :05, :10 … (each call = 1 news agent)
- *   push-notifications runs at :02, :07, :12 … (2 min after each news agent)
- *   This ensures no overlap and gives the news agent time to finish.
+ * news-generation runs at :00, :05, :10 … (each call = 1 news agent)
+ * push-notifications runs at :02, :07, :12 … (2 min after each news agent)
+ * This ensures no overlap and gives the news agent time to finish.
  *
  * Item 8: Notification titles use no AI branding — just the news headline.
  *
  * Item 9 (fix): Dedup + per-user language.
- *   - LOOKBACK_MINUTES (30) is intentionally wider than the 5-minute cron
- *     interval so a missed/late run doesn't skip a post. Duplicate sends
- *     across overlapping windows are prevented by `posts.notified_at`:
- *     a post is only ever picked up once (`notified_at is null`), and is
- *     stamped immediately after processing.
- *   - Each subscriber is sent the notification in their own
- *     `preferred_language` (title_ur / title_ar / title), instead of
- *     always sending the English title to everyone.
+ * - LOOKBACK_MINUTES (30) is intentionally wider than the 5-minute cron
+ *   interval so a missed/late run doesn't skip a post. Duplicate sends
+ *   across overlapping windows are prevented by `posts.notified_at`:
+ *   a post is only ever picked up once (`notified_at is null`), and is
+ *   stamped immediately after processing.
+ * - Each subscriber is sent the notification in their own
+ *   `preferred_language` (title_ur / title_ar / title), instead of
+ *   always sending the English title to everyone.
+ *
+ * Item 10 (fix): Delivery error tracking.
+ * - Every per-message error returned by the Expo push API is now logged
+ *   into `notification_errors` (post_id, push_token, error_code,
+ *   error_message) instead of only appearing in function console logs.
+ * - Tokens that Expo reports as "DeviceNotRegistered" (app uninstalled /
+ *   token permanently invalid) have their `push_token` cleared on the
+ *   matching `user_preferences` row so we stop wasting sends on dead
+ *   tokens and the row falls out of future `prefs` queries automatically.
  */
-
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
@@ -81,8 +89,26 @@ function localize(post: Post, lang: Lang): { title: string; body: string } {
   return { title: post.title, body: post.body };
 }
 
-async function sendExpoBatch(messages: object[]): Promise<void> {
-  if (messages.length === 0) return;
+interface ExpoTicket {
+  status: "ok" | "error";
+  message?: string;
+  details?: { error?: string };
+}
+
+interface SentMessage {
+  to: string;
+  postId: string;
+}
+
+/**
+ * Send a batch of Expo push messages and return the (message, ticket)
+ * pairs so the caller can log errors and deactivate dead tokens.
+ */
+async function sendExpoBatch(
+  messages: (object & SentMessage)[],
+): Promise<{ message: SentMessage; ticket: ExpoTicket }[]> {
+  const results: { message: SentMessage; ticket: ExpoTicket }[] = [];
+  if (messages.length === 0) return results;
 
   // Split into batches of EXPO_BATCH_SIZE
   for (let i = 0; i < messages.length; i += EXPO_BATCH_SIZE) {
@@ -97,21 +123,45 @@ async function sendExpoBatch(messages: object[]): Promise<void> {
         },
         body: JSON.stringify(batch),
       });
+
       if (!res.ok) {
         const errText = await res.text();
         console.error(`[PushAgent] Expo API error ${res.status}: ${errText}`);
+        // Whole batch failed at the transport level — record a generic
+        // error against every message in this batch so it's still visible
+        // in notification_errors instead of only in function logs.
+        for (const m of batch) {
+          results.push({
+            message: m,
+            ticket: { status: "error", message: `HTTP ${res.status}: ${errText.slice(0, 300)}` },
+          });
+        }
       } else {
         const result = await res.json();
-        const errCount = result.data?.filter((r: { status: string }) => r.status === 'error').length ?? 0;
+        const tickets: ExpoTicket[] = result.data ?? [];
+        const errCount = tickets.filter((r) => r.status === "error").length;
         if (errCount > 0) {
           console.warn(`[PushAgent] ${errCount}/${batch.length} messages had errors`);
         }
         console.log(`[PushAgent] Batch sent: ${batch.length} messages, ${errCount} errors`);
+        // Zip tickets back up with the messages that produced them —
+        // Expo returns tickets in the same order as the request array.
+        batch.forEach((m, idx) => {
+          const ticket = tickets[idx] ?? { status: "ok" as const };
+          results.push({ message: m, ticket });
+        });
       }
     } catch (err) {
       console.error("[PushAgent] Network error sending batch:", err);
+      for (const m of batch) {
+        results.push({
+          message: m,
+          ticket: { status: "error", message: err instanceof Error ? err.message : String(err) },
+        });
+      }
     }
   }
+  return results;
 }
 
 Deno.serve(async (req) => {
@@ -191,7 +241,7 @@ Deno.serve(async (req) => {
   // Step 3: Build notification messages — one per (post, subscriber),
   // localized to each subscriber's preferred_language (default Urdu,
   // matching the app's default).
-  const allMessages: object[] = [];
+  const allMessages: (object & SentMessage)[] = [];
   let totalNotified = 0;
   const processedPostIds: string[] = [];
 
@@ -211,6 +261,7 @@ Deno.serve(async (req) => {
 
       allMessages.push({
         to: pref.push_token,
+        postId: post.id,
         sound: "default",
         title,
         body: localizedBody.substring(0, 120),
@@ -221,16 +272,60 @@ Deno.serve(async (req) => {
 
     totalNotified += eligiblePrefs.length;
     processedPostIds.push(post.id);
-
     console.log(
       `[PushAgent] Post "${post.title.slice(0, 50)}" → ${eligiblePrefs.length} recipients` +
-      ` (breaking: ${post.is_breaking}, score: ${post.significance_score})`,
+        ` (breaking: ${post.is_breaking}, score: ${post.significance_score})`,
     );
   }
 
-  // Step 4: Send all messages in batches
+  // Step 4: Send all messages in batches, then process delivery results —
+  // log every error and deactivate permanently-invalid tokens.
   if (allMessages.length > 0) {
-    await sendExpoBatch(allMessages);
+    const results = await sendExpoBatch(allMessages);
+
+    const errorRows: {
+      post_id: string;
+      push_token: string;
+      error_code: string | null;
+      error_message: string | null;
+    }[] = [];
+    const deadTokens = new Set<string>();
+
+    for (const { message, ticket } of results) {
+      if (ticket.status === "error") {
+        const errorCode = ticket.details?.error ?? null;
+        errorRows.push({
+          post_id: message.postId,
+          push_token: message.to,
+          error_code: errorCode,
+          error_message: ticket.message ?? null,
+        });
+        if (errorCode === "DeviceNotRegistered") {
+          deadTokens.add(message.to);
+        }
+      }
+    }
+
+    if (errorRows.length > 0) {
+      const { error: logError } = await supabase.from("notification_errors").insert(errorRows);
+      if (logError) {
+        console.error("[PushAgent] Failed to log notification_errors:", logError.message);
+      } else {
+        console.log(`[PushAgent] Logged ${errorRows.length} delivery error(s)`);
+      }
+    }
+
+    if (deadTokens.size > 0) {
+      const { error: clearError } = await supabase
+        .from("user_preferences")
+        .update({ push_token: null })
+        .in("push_token", Array.from(deadTokens));
+      if (clearError) {
+        console.error("[PushAgent] Failed to clear dead push tokens:", clearError.message);
+      } else {
+        console.log(`[PushAgent] Cleared ${deadTokens.size} dead push token(s)`);
+      }
+    }
   }
 
   // Step 5: Stamp every processed post as notified — even if it had 0
