@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "DigitalXNews",
-    "slug": "digital-x-news",
+    "name": "Al-Madaris",
+    "slug": "al-madaris",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "digitalxnews",
+    "scheme": "almadaris",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -15,10 +15,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.digitalxnews.islamnashra"
+      "bundleIdentifier": "com.almadaris.app"
     },
     "android": {
-      "package": "com.digitalxnews.islamnashra",
+      "package": "com.almadaris.app",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
@@ -34,24 +34,16 @@
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
-      [
-        "expo-router",
-        {
-          "origin": "https://replit.com/"
-        }
-      ],
+      ["expo-router", { "origin": "https://replit.com/" }],
       "expo-font",
       "expo-web-browser",
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/images/icon.png",
-          "color": "#1D9BF0",
-          "sounds": [],
-          "androidMode": "default",
-          "androidCollapsedTitle": "DigitalXNews"
-        }
-      ]
+      ["expo-notifications", {
+        "icon": "./assets/images/icon.png",
+        "color": "#1D9BF0",
+        "sounds": [],
+        "androidMode": "default",
+        "androidCollapsedTitle": "Al-Madaris"
+      }]
     ],
     "extra": {
       "eas": {
